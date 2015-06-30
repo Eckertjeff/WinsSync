@@ -12,3 +12,5 @@ Future Expansions:
 2) Calendar sync support, to upload the schedule to an online calendar service.
 
 3) Automation, to have the program run weekly to fetch new schedule updates.
+
+4) Porting to mobile platforms for ease of access.
