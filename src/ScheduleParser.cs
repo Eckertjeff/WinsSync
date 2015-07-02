@@ -1,9 +1,15 @@
-﻿ using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.IO;
+using Google.Apis.Auth.OAuth2;
+using Google.Apis.Calendar.v3;
+using Google.Apis.Calendar.v3.Data;
+using Google.Apis.Services;
+using Google.Apis.Util.Store;
+using System.Threading;
 
 namespace ScheduleParser
 {
@@ -20,8 +26,10 @@ namespace ScheduleParser
         public float Hours;
         public string Activity;
         public string Location;
-        public string StartTime; // todo parse into Time struct
-        public string EndTime; // todo parse into Time struct
+        public string StartTime;
+        public string EndTime;
+        public DateTime StartDateTime;
+        public DateTime EndDateTime;
         public string Comments;
 
         public enum DayEnum { Sunday, Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, INVALID }
@@ -64,9 +72,15 @@ namespace ScheduleParser
     class Program
     {
         static List<string> m_Tables = new List<string>();
+        static string[] Scopes = { CalendarService.Scope.Calendar };
+        static string ApplicationName = "WScheduler";
 
         static void Main(string[] args)
         {
+            UserCredential credential;
+            String calendarId = "primary";
+
+
             var originalColor = Console.ForegroundColor;
             Console.ForegroundColor = ConsoleColor.Cyan;
 
@@ -75,12 +89,33 @@ namespace ScheduleParser
             var startTable = "<table";
 
             int index = 0;
+            
+            // Setup our Google credentials.
+            using (var stream =
+                new FileStream("client_secret.json", FileMode.Open, FileAccess.Read))
+            {
+                string credPath = System.Environment.GetFolderPath(
+                    System.Environment.SpecialFolder.Personal);
+                credPath = Path.Combine(credPath, ".credentials");
+
+                credential = GoogleWebAuthorizationBroker.AuthorizeAsync(
+                    GoogleClientSecrets.Load(stream).Secrets, Scopes, "user", CancellationToken.None,
+                    new FileDataStore(credPath, true)).Result;
+                Console.WriteLine("Credential file saved to: " + credPath);
+            }
+
+            // Create Google Calendar API service.
+            var service = new CalendarService(new BaseClientService.Initializer()
+            {
+                HttpClientInitializer = credential,
+                ApplicationName = ApplicationName,
+            });
 
             Console.WriteLine("Parsing DOM for HTML Tables");
             // Parse the DOM, find our tables
             while ((index = file.IndexOf(startTable, index + 1, StringComparison.OrdinalIgnoreCase)) != -1)
             {
-                var tableContentEndIndex = file.IndexOf(endTable, index);
+                var tableContentEndIndex = file.IndexOf(endTable, index, StringComparison.OrdinalIgnoreCase);
                 var tableContent = file.Substring(index, tableContentEndIndex - index + endTable.Length);
 
                 Console.WriteLine("Found a table DOM element!");
@@ -94,14 +129,14 @@ namespace ScheduleParser
 
             if (oneWeWantList.Count() > 1)
             {
-                throw new Exception("Our hacky ass code found more than one 'right' one. Do it better.");
+                throw new Exception("Found more than one 'right' table.");
             }
 
             var correctTable = oneWeWantList.FirstOrDefault();
 
             if (correctTable == null)
             {
-                throw new Exception("Our shitty ass code didn't find the right one at all. #NailedIt.");
+                throw new Exception("The 'right' table does not exist.");
             }
 
             Console.WriteLine("Identified which Table is the Schedule...");
@@ -152,12 +187,12 @@ namespace ScheduleParser
                 rows.Add(row);
             }
 
-            Console.WriteLine("Parse complete... All your HTML belongs to us.");
+            Console.WriteLine("Parse complete...");
             Console.WriteLine(string.Empty);
             Console.ForegroundColor = originalColor;
 
             // Now that we have all the data in a parsable format
-            // w need to parse the "rows" object
+            // we need to parse the "rows" object
             var schedule = new List<WorkDay>();
 
             var dateRow = rows[1]; // First row is empty... classic
@@ -196,11 +231,46 @@ namespace ScheduleParser
                 workDay.StartTime = times[0];
                 workDay.EndTime = times.Length == 1 ? times[0] : times[1];
 
+                if (workDay.Hours > 0)
+                {
+                    workDay.StartDateTime = DateTime.Parse(workDay.Date.ToShortDateString() + " " + workDay.StartTime);
+                    workDay.EndDateTime = DateTime.Parse(workDay.Date.ToShortDateString() + " " + workDay.EndTime);
+                }
+                
+
                 schedule.Add(workDay);
                 dayIndex++;
+                
+                // Now let's upload it to Google Calendar
+                // Warning, writes without checking if the event already exists,
+                // so if run multiple times on the same schedule, it will produce duplicates.
+                // todo: check before insert.
+                Event newEvent = new Event()
+                {
+                    Summary = workDay.Activity,
+                    Description = workDay.Comments,
+                    Start = new EventDateTime()
+                    {
+                        DateTime = workDay.StartDateTime,
+                        TimeZone = "America/New_York",
+                    },
+                    End = new EventDateTime()
+                    {
+                        DateTime = workDay.EndDateTime,
+                        TimeZone = "America/New_York",
+                    },
+                    Reminders = new Event.RemindersData()
+                    {
+                        UseDefault = true,
+                    },
+                };
+                EventsResource.InsertRequest request = service.Events.Insert(newEvent, calendarId);
+                Event createdEvent = request.Execute();
+                Console.WriteLine("Event Created: {0}", createdEvent.HtmlLink);
+                
             }
 
-            // Display our results
+            // Display our results to the user.
             foreach (var day in schedule)
             {
                 if (day.Hours == 0)
@@ -224,6 +294,6 @@ namespace ScheduleParser
             }
 
             Console.ReadKey();
-            }
         }
     }
+}
