@@ -273,10 +273,9 @@ namespace ScheduleParser
                 // Setup request for current events.
                 EventsResource.ListRequest listrequest = service.Events.List("primary");
                 listrequest.TimeMin = DateTime.Now;
-                listrequest.TimeMax = DateTime.Today.AddDays(8);
+                listrequest.TimeMax = DateTime.Today.AddDays(15);
                 listrequest.ShowDeleted = false;
                 listrequest.SingleEvents = true;
-                listrequest.MaxResults = 14;
                 listrequest.OrderBy = EventsResource.ListRequest.OrderByEnum.StartTime;
 
                 // Check to see if work events are already in place on the schedule, if they are,
@@ -333,7 +332,7 @@ namespace ScheduleParser
                     // Execute batch request.
                     request.ExecuteAsync();
             }
-            Console.WriteLine("Upload Complete.");
+            Console.WriteLine("Upload Complete, Press any key to exit.");
             Console.ReadKey();
         }
     }
