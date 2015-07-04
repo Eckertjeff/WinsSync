@@ -9,6 +9,7 @@ using Google.Apis.Calendar.v3;
 using Google.Apis.Calendar.v3.Data;
 using Google.Apis.Services;
 using Google.Apis.Util.Store;
+using Google.Apis.Requests;
 using System.Threading;
 
 namespace ScheduleParser
@@ -237,37 +238,8 @@ namespace ScheduleParser
                     workDay.EndDateTime = DateTime.Parse(workDay.Date.ToShortDateString() + " " + workDay.EndTime);
                 }
                 
-
                 schedule.Add(workDay);
-                dayIndex++;
-                
-                // Now let's upload it to Google Calendar
-                // Warning, writes without checking if the event already exists,
-                // so if run multiple times on the same schedule, it will produce duplicates.
-                // todo: check before insert.
-                Event newEvent = new Event()
-                {
-                    Summary = workDay.Activity,
-                    Description = workDay.Comments,
-                    Start = new EventDateTime()
-                    {
-                        DateTime = workDay.StartDateTime,
-                        TimeZone = "America/New_York",
-                    },
-                    End = new EventDateTime()
-                    {
-                        DateTime = workDay.EndDateTime,
-                        TimeZone = "America/New_York",
-                    },
-                    Reminders = new Event.RemindersData()
-                    {
-                        UseDefault = true,
-                    },
-                };
-                EventsResource.InsertRequest request = service.Events.Insert(newEvent, calendarId);
-                Event createdEvent = request.Execute();
-                Console.WriteLine("Event Created: {0}", createdEvent.HtmlLink);
-                
+                dayIndex++;    
             }
 
             // Display our results to the user.
@@ -292,7 +264,76 @@ namespace ScheduleParser
                 Console.WriteLine(string.Empty);
                 Console.ForegroundColor = originalColor;
             }
+            Console.WriteLine("Uploading to Google Calendar...");
 
+            foreach (var day in schedule)
+            {
+                // Now let's upload it to Google Calendar
+                var request = new BatchRequest(service);
+                // Setup request for current events.
+                EventsResource.ListRequest listrequest = service.Events.List("primary");
+                listrequest.TimeMin = DateTime.Now;
+                listrequest.TimeMax = DateTime.Today.AddDays(8);
+                listrequest.ShowDeleted = false;
+                listrequest.SingleEvents = true;
+                listrequest.MaxResults = 14;
+                listrequest.OrderBy = EventsResource.ListRequest.OrderByEnum.StartTime;
+
+                // Check to see if work events are already in place on the schedule, if they are,
+                // setup a batch request to delete them.
+                var findevent = "Wegmans: ";
+                Events eventslist = listrequest.Execute();
+                if (eventslist.Items != null && eventslist.Items.Count > 0)
+                {
+                    foreach (var eventItem in eventslist.Items)
+                    {
+                        DateTime eventcontainer = (DateTime)eventItem.Start.DateTime;
+                        if (((eventcontainer.ToShortDateString()) == (day.Date.ToShortDateString())) && (eventItem.Summary.Contains(findevent)))
+                        {
+                            request.Queue<Event>(service.Events.Delete(calendarId, eventItem.Id),
+                                (content, error, i, message) =>
+                                {
+                                    if (error != null)
+                                    {
+                                        throw new Exception(error.ToString());
+                                    }
+                                });
+                        }
+                    }
+                }
+                    // Setup a batch request to upload the work events.
+                    request.Queue<Event>(service.Events.Insert(
+                    new Event
+                    {
+                        Summary = "Wegmans: " + day.Activity,
+                        Description = day.Comments,
+                        Location = day.Location,
+                        Start = new EventDateTime()
+                        {
+                            DateTime = day.StartDateTime,
+                            TimeZone = "America/New_York",
+                        },
+                        End = new EventDateTime()
+                        {
+                            DateTime = day.EndDateTime,
+                            TimeZone = "America/New_York",
+                        },
+                        Reminders = new Event.RemindersData()
+                        {
+                            UseDefault = true,
+                        },
+                    }, calendarId),
+                    (content, error, i, message) =>
+                    {
+                        if (error != null)
+                        {
+                            throw new Exception(error.ToString());
+                        }
+                    });
+                    // Execute batch request.
+                    request.ExecuteAsync();
+            }
+            Console.WriteLine("Upload Complete.");
             Console.ReadKey();
         }
     }
