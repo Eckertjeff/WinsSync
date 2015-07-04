@@ -271,7 +271,7 @@ namespace ScheduleParser
                 // Now let's upload it to Google Calendar
                 var request = new BatchRequest(service);
                 // Setup request for current events.
-                EventsResource.ListRequest listrequest = service.Events.List("primary");
+                EventsResource.ListRequest listrequest = service.Events.List(calendarId);
                 listrequest.TimeMin = DateTime.Now;
                 listrequest.TimeMax = DateTime.Today.AddDays(15);
                 listrequest.ShowDeleted = false;
@@ -280,14 +280,16 @@ namespace ScheduleParser
 
                 // Check to see if work events are already in place on the schedule, if they are,
                 // setup a batch request to delete them.
-                var findevent = "Wegmans: ";
+                // Not the best implementation, but takes care of duplicates without tracking
+                // eventIds to update existing events.
+                var workevent = "Wegmans: ";
                 Events eventslist = listrequest.Execute();
                 if (eventslist.Items != null && eventslist.Items.Count > 0)
                 {
                     foreach (var eventItem in eventslist.Items)
                     {
-                        DateTime eventcontainer = (DateTime)eventItem.Start.DateTime;
-                        if (((eventcontainer.ToShortDateString()) == (day.Date.ToShortDateString())) && (eventItem.Summary.Contains(findevent)))
+                        DateTime eventcontainer = (DateTime)eventItem.Start.DateTime; // Typecast to use ToShortDateString() method for comparison.
+                        if (((eventcontainer.ToShortDateString()) == (day.Date.ToShortDateString())) && (eventItem.Summary.Contains(workevent)))
                         {
                             request.Queue<Event>(service.Events.Delete(calendarId, eventItem.Id),
                                 (content, error, i, message) =>
@@ -304,7 +306,7 @@ namespace ScheduleParser
                     request.Queue<Event>(service.Events.Insert(
                     new Event
                     {
-                        Summary = "Wegmans: " + day.Activity,
+                        Summary = workevent + day.Activity,
                         Description = day.Comments,
                         Location = day.Location,
                         Start = new EventDateTime()
