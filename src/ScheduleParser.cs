@@ -78,20 +78,49 @@ namespace ScheduleParser
 
         static void Main(string[] args)
         {
-            UserCredential credential;
             String calendarId = "primary";
-
-
-            var originalColor = Console.ForegroundColor;
+            ConsoleColor originalColor = Console.ForegroundColor;
             Console.ForegroundColor = ConsoleColor.Cyan;
-
-            var file = File.ReadAllText("Welcome.html");
-            var endTable = "</table>";
-            var startTable = "<table";
-
-            int index = 0;
             
             // Setup our Google credentials.
+            UserCredential credential = setupGoogleCreds();
+
+            // Create Google Calendar API service.
+            var service = new CalendarService(new BaseClientService.Initializer()
+            {
+                HttpClientInitializer = credential,
+                ApplicationName = ApplicationName,
+            });
+
+            // Parse the DOM, find our tables
+            Console.WriteLine("Parsing DOM for HTML Tables");
+            var correctTable = findTable();
+            Console.WriteLine("Identified which Table is the Schedule...");
+
+            // Now we gotta parse our table for the values we want
+            var rows = parseTable(correctTable);
+            Console.WriteLine("Parse complete...");
+            Console.WriteLine(string.Empty);
+            Console.ForegroundColor = originalColor;
+
+            // Now that we have all the data in a parsable format
+            // we need to parse the "rows" object
+            var schedule = parseRows(rows);
+
+            // Display our results to the user.
+            displayResults(schedule, originalColor);
+
+            // Now let's upload it to Google Calendar
+            Console.WriteLine("Uploading to Google Calendar...");
+            uploadResults(schedule, service, calendarId);
+
+            Console.WriteLine("Upload Complete, Press any key to exit.");
+            Console.ReadKey();
+        }
+       
+        static public UserCredential setupGoogleCreds()
+        {
+            UserCredential credential;
             using (var stream =
                 new FileStream("client_secret.json", FileMode.Open, FileAccess.Read))
             {
@@ -103,16 +132,17 @@ namespace ScheduleParser
                     GoogleClientSecrets.Load(stream).Secrets, Scopes, "user", CancellationToken.None,
                     new FileDataStore(credPath, true)).Result;
                 Console.WriteLine("Credential file saved to: " + credPath);
+                return credential;
             }
+        }
 
-            // Create Google Calendar API service.
-            var service = new CalendarService(new BaseClientService.Initializer()
-            {
-                HttpClientInitializer = credential,
-                ApplicationName = ApplicationName,
-            });
+        static public string findTable()
+        {
+            var endTable = "</table>";
+            var startTable = "<table";
+            var file = File.ReadAllText("Welcome.html");
+            int index = 0;
 
-            Console.WriteLine("Parsing DOM for HTML Tables");
             // Parse the DOM, find our tables
             while ((index = file.IndexOf(startTable, index + 1, StringComparison.OrdinalIgnoreCase)) != -1)
             {
@@ -140,9 +170,11 @@ namespace ScheduleParser
                 throw new Exception("The 'right' table does not exist.");
             }
 
-            Console.WriteLine("Identified which Table is the Schedule...");
+            return correctTable;
+        }
 
-            // Now we gotta parse our table for the values we want
+        static public List<Row> parseTable(string correctTable)
+        {
             const string rowStart = "<tr";
             const string cellStart = "<td";
             const string rowEnd = "</tr>";
@@ -150,7 +182,7 @@ namespace ScheduleParser
 
             var rows = new List<Row>();
 
-            index = 0;
+            var index = 0;
             while ((index = correctTable.IndexOf(rowStart, index + 1, StringComparison.OrdinalIgnoreCase)) != -1)
             {
                 var rowContentEndIndex = correctTable.IndexOf(rowEnd, index);
@@ -188,12 +220,11 @@ namespace ScheduleParser
                 rows.Add(row);
             }
 
-            Console.WriteLine("Parse complete...");
-            Console.WriteLine(string.Empty);
-            Console.ForegroundColor = originalColor;
+            return rows;
+        }
 
-            // Now that we have all the data in a parsable format
-            // we need to parse the "rows" object
+        static public List<WorkDay> parseRows(List<Row> rows)
+        {
             var schedule = new List<WorkDay>();
 
             var dateRow = rows[1]; // First row is empty... classic
@@ -237,12 +268,15 @@ namespace ScheduleParser
                     workDay.StartDateTime = DateTime.Parse(workDay.Date.ToShortDateString() + " " + workDay.StartTime);
                     workDay.EndDateTime = DateTime.Parse(workDay.Date.ToShortDateString() + " " + workDay.EndTime);
                 }
-                
-                schedule.Add(workDay);
-                dayIndex++;    
-            }
 
-            // Display our results to the user.
+                schedule.Add(workDay);
+                dayIndex++;
+            }
+            return schedule;
+        }
+
+        static public void displayResults(List<WorkDay> schedule, ConsoleColor originalColor)
+        {
             foreach (var day in schedule)
             {
                 if (day.Hours == 0)
@@ -264,11 +298,12 @@ namespace ScheduleParser
                 Console.WriteLine(string.Empty);
                 Console.ForegroundColor = originalColor;
             }
-            Console.WriteLine("Uploading to Google Calendar...");
+        }
 
+        static public void uploadResults(List<WorkDay> schedule, CalendarService service, string calendarId)
+        {
             foreach (var day in schedule)
             {
-                // Now let's upload it to Google Calendar
                 var request = new BatchRequest(service);
                 // Setup request for current events.
                 EventsResource.ListRequest listrequest = service.Events.List(calendarId);
@@ -302,40 +337,39 @@ namespace ScheduleParser
                         }
                     }
                 }
-                    // Setup a batch request to upload the work events.
-                    request.Queue<Event>(service.Events.Insert(
-                    new Event
+                // Setup a batch request to upload the work events.
+                request.Queue<Event>(service.Events.Insert(
+                new Event
+                {
+                    Summary = workevent + day.Activity,
+                    Description = day.Comments,
+                    Location = day.Location,
+                    Start = new EventDateTime()
                     {
-                        Summary = workevent + day.Activity,
-                        Description = day.Comments,
-                        Location = day.Location,
-                        Start = new EventDateTime()
-                        {
-                            DateTime = day.StartDateTime,
-                            TimeZone = "America/New_York",
-                        },
-                        End = new EventDateTime()
-                        {
-                            DateTime = day.EndDateTime,
-                            TimeZone = "America/New_York",
-                        },
-                        Reminders = new Event.RemindersData()
-                        {
-                            UseDefault = true,
-                        },
-                    }, calendarId),
-                    (content, error, i, message) =>
+                        DateTime = day.StartDateTime,
+                        TimeZone = "America/New_York",
+                    },
+                    End = new EventDateTime()
                     {
-                        if (error != null)
-                        {
-                            throw new Exception(error.ToString());
-                        }
-                    });
-                    // Execute batch request.
-                    request.ExecuteAsync();
+                        DateTime = day.EndDateTime,
+                        TimeZone = "America/New_York",
+                    },
+                    Reminders = new Event.RemindersData()
+                    {
+                        UseDefault = true,
+                    },
+                }, calendarId),
+                (content, error, i, message) =>
+                {
+                    if (error != null)
+                    {
+                        throw new Exception(error.ToString());
+                    }
+                });
+                // Execute batch request.
+                request.ExecuteAsync();
             }
-            Console.WriteLine("Upload Complete, Press any key to exit.");
-            Console.ReadKey();
         }
+
     }
 }
