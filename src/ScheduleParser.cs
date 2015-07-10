@@ -81,6 +81,8 @@ namespace ScheduleParser
             String calendarId = "primary";
             ConsoleColor originalColor = Console.ForegroundColor;
             Console.ForegroundColor = ConsoleColor.Cyan;
+            var file = File.ReadAllText("Welcome.html");
+
             
             // Setup our Google credentials.
             UserCredential credential = setupGoogleCreds();
@@ -94,7 +96,7 @@ namespace ScheduleParser
 
             // Parse the DOM, find our tables
             Console.WriteLine("Parsing DOM for HTML Tables");
-            var correctTable = findTable();
+            var correctTable = findTable(file);
             Console.WriteLine("Identified which Table is the Schedule...");
 
             // Now we gotta parse our table for the values we want
@@ -136,11 +138,10 @@ namespace ScheduleParser
             }
         }
 
-        static public string findTable()
+        static public string findTable(string file)
         {
             var endTable = "</table>";
             var startTable = "<table";
-            var file = File.ReadAllText("Welcome.html");
             int index = 0;
 
             // Parse the DOM, find our tables
@@ -300,7 +301,7 @@ namespace ScheduleParser
             }
         }
 
-        static public void uploadResults(List<WorkDay> schedule, CalendarService service, string calendarId)
+        static public async void uploadResults(List<WorkDay> schedule, CalendarService service, string calendarId)
         {
             foreach (var day in schedule)
             {
@@ -367,7 +368,7 @@ namespace ScheduleParser
                     }
                 });
                 // Execute batch request.
-                request.ExecuteAsync();
+                await request.ExecuteAsync();
             }
         }
 
