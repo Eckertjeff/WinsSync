@@ -9,8 +9,6 @@ Future Expansions:
 
 1) Enable fetching of the html page in-program using the HttpClient class.
 
-2) Calendar sync support, to upload the schedule to an online calendar service. --- Implemented!
+2) Automation, to have the program run weekly to fetch new schedule updates.
 
-3) Automation, to have the program run weekly to fetch new schedule updates.
-
-4) Porting to mobile platforms for ease of access.
+3) Porting to mobile platforms for ease of access.
