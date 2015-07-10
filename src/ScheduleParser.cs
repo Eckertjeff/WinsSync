@@ -11,6 +11,7 @@ using Google.Apis.Services;
 using Google.Apis.Util.Store;
 using Google.Apis.Requests;
 using System.Threading;
+using System.Net.Http;
 
 namespace ScheduleParser
 {
@@ -73,6 +74,7 @@ namespace ScheduleParser
     class Program
     {
         static List<string> m_Tables = new List<string>();
+        static string file2 = string.Empty;
         static string[] Scopes = { CalendarService.Scope.Calendar };
         static string ApplicationName = "WScheduler";
 
@@ -83,6 +85,9 @@ namespace ScheduleParser
             Console.ForegroundColor = ConsoleColor.Cyan;
             var file = File.ReadAllText("Welcome.html");
 
+            // GET our schedule
+            Task t = new Task(HTTP_GET);
+            t.Start();
             
             // Setup our Google credentials.
             UserCredential credential = setupGoogleCreds();
@@ -98,6 +103,7 @@ namespace ScheduleParser
             Console.WriteLine("Parsing DOM for HTML Tables");
             var correctTable = findTable(file);
             Console.WriteLine("Identified which Table is the Schedule...");
+            
 
             // Now we gotta parse our table for the values we want
             var rows = parseTable(correctTable);
@@ -118,6 +124,32 @@ namespace ScheduleParser
 
             Console.WriteLine("Upload Complete, Press any key to exit.");
             Console.ReadKey();
+        }
+
+        static public async void HTTP_GET()
+        {
+            var TARGETURL = "https://schedule.mywegmansconnect.com/wfm/action/silentSignon?loginInfo=IjkmIFOw9odOxz9SU5PcX0eOZrqY%2bR9zqj6Xmfamhlc%3d";
+
+            HttpClientHandler handler = new HttpClientHandler()
+                {
+                    //put cookiesncredzzzz here
+                };
+
+            Console.WriteLine("GET: + " + TARGETURL);
+
+            // Use HttpClient.            
+            HttpClient client = new HttpClient(handler);
+
+            HttpResponseMessage response = await client.GetAsync(TARGETURL);
+            HttpContent content = response.Content;
+
+            // Check Status Code                                
+            Console.WriteLine("Response StatusCode: " + (int)response.StatusCode);
+            // Read the string.
+            file2 = await content.ReadAsStringAsync();
+
+            // Display the result.
+            Console.WriteLine(file2);
         }
        
         static public UserCredential setupGoogleCreds()
