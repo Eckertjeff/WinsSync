@@ -11,6 +11,7 @@ using Google.Apis.Services;
 using Google.Apis.Util.Store;
 using Google.Apis.Requests;
 using System.Threading;
+using System.Net.Http;
 
 namespace ScheduleParser
 {
@@ -73,6 +74,7 @@ namespace ScheduleParser
     class Program
     {
         static List<string> m_Tables = new List<string>();
+        static string getcontentstring = null;
         static string[] Scopes = { CalendarService.Scope.Calendar };
         static string ApplicationName = "WScheduler";
 
@@ -81,11 +83,12 @@ namespace ScheduleParser
             String calendarId = "primary";
             ConsoleColor originalColor = Console.ForegroundColor;
             Console.ForegroundColor = ConsoleColor.Cyan;
-            var file = File.ReadAllText("Welcome.html");
 
-            
             // Setup our Google credentials.
             UserCredential credential = setupGoogleCreds();
+
+            // GET our schedule
+            HTTP_GET().Wait();
 
             // Create Google Calendar API service.
             var service = new CalendarService(new BaseClientService.Initializer()
@@ -96,8 +99,9 @@ namespace ScheduleParser
 
             // Parse the DOM, find our tables
             Console.WriteLine("Parsing DOM for HTML Tables");
-            var correctTable = findTable(file);
+            var correctTable = findTable(getcontentstring);
             Console.WriteLine("Identified which Table is the Schedule...");
+            
 
             // Now we gotta parse our table for the values we want
             var rows = parseTable(correctTable);
@@ -114,10 +118,36 @@ namespace ScheduleParser
 
             // Now let's upload it to Google Calendar
             Console.WriteLine("Uploading to Google Calendar...");
-            uploadResults(schedule, service, calendarId);
-
+            uploadResults(schedule, service, calendarId).Wait();
+         
             Console.WriteLine("Upload Complete, Press any key to exit.");
             Console.ReadKey();
+        }
+
+        static public async Task HTTP_GET()
+        {
+            //Copy Paste of SSO link from browser until proper means of authentication is established.
+            System.Diagnostics.Process.Start("https://wegmans.sharepoint.com/resources/Pages/LaborPro.aspx");
+            Console.WriteLine("Please right-click the \"Access Your Schedule\" link,");
+            Console.WriteLine("then select \"Copy link address\" and then paste it into this window.");
+            var TARGETURL = Console.ReadLine();
+
+            HttpClientHandler handler = new HttpClientHandler()
+                {
+                    //todo: add cookie and credentials containers for future sign-ins without browser aid.
+                };
+
+            Console.WriteLine("GET: + " + TARGETURL);
+
+            // Use HttpClient.            
+            HttpClient client = new HttpClient(handler);
+
+            HttpResponseMessage response = await client.GetAsync(TARGETURL);
+            HttpContent content = response.Content;
+
+            // Check Status Code                                
+            Console.WriteLine("Response StatusCode: " + (int)response.StatusCode);
+            getcontentstring = await content.ReadAsStringAsync();
         }
        
         static public UserCredential setupGoogleCreds()
@@ -301,7 +331,7 @@ namespace ScheduleParser
             }
         }
 
-        static public async void uploadResults(List<WorkDay> schedule, CalendarService service, string calendarId)
+        static public async Task uploadResults(List<WorkDay> schedule, CalendarService service, string calendarId)
         {
             foreach (var day in schedule)
             {
