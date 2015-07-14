@@ -74,7 +74,7 @@ namespace ScheduleParser
     class Program
     {
         static List<string> m_Tables = new List<string>();
-        static string file2 = string.Empty;
+        static string getcontentstring = null;
         static string[] Scopes = { CalendarService.Scope.Calendar };
         static string ApplicationName = "WScheduler";
 
@@ -86,8 +86,7 @@ namespace ScheduleParser
             var file = File.ReadAllText("Welcome.html");
 
             // GET our schedule
-            Task t = new Task(HTTP_GET);
-            t.Start();
+            HTTP_GET().Wait();
             
             // Setup our Google credentials.
             UserCredential credential = setupGoogleCreds();
@@ -101,7 +100,7 @@ namespace ScheduleParser
 
             // Parse the DOM, find our tables
             Console.WriteLine("Parsing DOM for HTML Tables");
-            var correctTable = findTable(file);
+            var correctTable = findTable(getcontentstring);
             Console.WriteLine("Identified which Table is the Schedule...");
             
 
@@ -120,19 +119,20 @@ namespace ScheduleParser
 
             // Now let's upload it to Google Calendar
             Console.WriteLine("Uploading to Google Calendar...");
-            uploadResults(schedule, service, calendarId);
-
+            uploadResults(schedule, service, calendarId).Wait();
+         
             Console.WriteLine("Upload Complete, Press any key to exit.");
             Console.ReadKey();
         }
 
-        static public async void HTTP_GET()
+        static public async Task HTTP_GET()
         {
-            var TARGETURL = "https://schedule.mywegmansconnect.com/wfm/action/silentSignon?loginInfo=IjkmIFOw9odOxz9SU5PcX0eOZrqY%2bR9zqj6Xmfamhlc%3d";
+            //Copy Paste of SSO link from browser until proper means of authentication is established.
+            var TARGETURL = "SSOLinkHere";
 
             HttpClientHandler handler = new HttpClientHandler()
                 {
-                    //put cookiesncredzzzz here
+                    //todo: add cookies and credentials containers for future sign-ins.
                 };
 
             Console.WriteLine("GET: + " + TARGETURL);
@@ -145,11 +145,7 @@ namespace ScheduleParser
 
             // Check Status Code                                
             Console.WriteLine("Response StatusCode: " + (int)response.StatusCode);
-            // Read the string.
-            file2 = await content.ReadAsStringAsync();
-
-            // Display the result.
-            Console.WriteLine(file2);
+            getcontentstring = await content.ReadAsStringAsync();
         }
        
         static public UserCredential setupGoogleCreds()
@@ -333,7 +329,7 @@ namespace ScheduleParser
             }
         }
 
-        static public async void uploadResults(List<WorkDay> schedule, CalendarService service, string calendarId)
+        static public async Task uploadResults(List<WorkDay> schedule, CalendarService service, string calendarId)
         {
             foreach (var day in schedule)
             {
