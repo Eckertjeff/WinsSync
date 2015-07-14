@@ -83,13 +83,12 @@ namespace ScheduleParser
             String calendarId = "primary";
             ConsoleColor originalColor = Console.ForegroundColor;
             Console.ForegroundColor = ConsoleColor.Cyan;
-            var file = File.ReadAllText("Welcome.html");
+
+            // Setup our Google credentials.
+            UserCredential credential = setupGoogleCreds();
 
             // GET our schedule
             HTTP_GET().Wait();
-            
-            // Setup our Google credentials.
-            UserCredential credential = setupGoogleCreds();
 
             // Create Google Calendar API service.
             var service = new CalendarService(new BaseClientService.Initializer()
@@ -128,11 +127,14 @@ namespace ScheduleParser
         static public async Task HTTP_GET()
         {
             //Copy Paste of SSO link from browser until proper means of authentication is established.
-            var TARGETURL = "SSOLinkHere";
+            System.Diagnostics.Process.Start("https://wegmans.sharepoint.com/resources/Pages/LaborPro.aspx");
+            Console.WriteLine("Please right-click the \"Access Your Schedule\" link,");
+            Console.WriteLine("then select \"Copy link address\" and then paste it into this window.");
+            var TARGETURL = Console.ReadLine();
 
             HttpClientHandler handler = new HttpClientHandler()
                 {
-                    //todo: add cookies and credentials containers for future sign-ins.
+                    //todo: add cookie and credentials containers for future sign-ins without browser aid.
                 };
 
             Console.WriteLine("GET: + " + TARGETURL);
