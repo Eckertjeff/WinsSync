@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -12,6 +12,10 @@ using Google.Apis.Util.Store;
 using Google.Apis.Requests;
 using System.Threading;
 using System.Net.Http;
+using OpenQA.Selenium;
+using OpenQA.Selenium.Firefox;
+using OpenQA.Selenium.Support.UI;
+using System.Collections.ObjectModel;
 
 namespace ScheduleParser
 {
@@ -74,7 +78,6 @@ namespace ScheduleParser
     class Program
     {
         static List<string> m_Tables = new List<string>();
-        static string getcontentstring = null;
         static string[] Scopes = { CalendarService.Scope.Calendar };
         static string ApplicationName = "WScheduler";
 
@@ -87,8 +90,13 @@ namespace ScheduleParser
             // Setup our Google credentials.
             UserCredential credential = setupGoogleCreds();
 
+            Console.Write("Please Enter your username: ");
+            var username = Console.ReadLine();
+            Console.Write("Please Enter your password: ");
+            var password = Console.ReadLine();
+
             // GET our schedule
-            HTTP_GET().Wait();
+            var schedulestring = HTTP_GET(username, password);
 
             // Create Google Calendar API service.
             var service = new CalendarService(new BaseClientService.Initializer()
@@ -99,7 +107,7 @@ namespace ScheduleParser
 
             // Parse the DOM, find our tables
             Console.WriteLine("Parsing DOM for HTML Tables");
-            var correctTable = findTable(getcontentstring);
+            var correctTable = findTable(schedulestring);
             Console.WriteLine("Identified which Table is the Schedule...");
             
 
@@ -124,30 +132,46 @@ namespace ScheduleParser
             Console.ReadKey();
         }
 
-        static public async Task HTTP_GET()
+        static public string HTTP_GET(string username, string password)
         {
-            //Copy Paste of SSO link from browser until proper means of authentication is established.
-            System.Diagnostics.Process.Start("https://wegmans.sharepoint.com/resources/Pages/LaborPro.aspx");
-            Console.WriteLine("Please right-click the \"Access Your Schedule\" link,");
-            Console.WriteLine("then select \"Copy link address\" and then paste it into this window.");
-            var TARGETURL = Console.ReadLine();
+            IWebDriver driver = new FirefoxDriver();
+            driver.Navigate().GoToUrl("https://wegmans.sharepoint.com/resources/Pages/LaborPro.aspx");
+            if (driver.Title.ToString() == "Sign in to Office 365")
+            {
+                IWebElement loginentry = driver.FindElement(By.XPath("//*[@id='cred_userid_inputtext']"));
+                loginentry.SendKeys(username);
+                IWebElement rememberme = driver.FindElement(By.XPath("//*[@id='cred_keep_me_signed_in_checkbox']"));
+                rememberme.Click();
+            }
+            WebDriverWait wait = new WebDriverWait(driver, TimeSpan.FromSeconds(10));
+            wait.Until((d) => { return (d.Title.ToString().Contains("Sign In") || d.Title.ToString().Contains("My Schedule")); }); // Sometimes it skips the second login page.
+            if (driver.Title.ToString() == "Sign In")
+            {
+                IWebElement passwordentry = driver.FindElement(By.XPath("//*[@id='passwordInput']"));
+                passwordentry.SendKeys(password);
+                passwordentry.Submit();
+            }
+            Thread.Sleep(TimeSpan.FromSeconds(10)); // Sleep until javascript executes and generates the SSO link, terrible design.
+            string BaseWindow = driver.CurrentWindowHandle;
+            driver.SwitchTo().Frame(0);
+            IWebElement accessschedule = driver.FindElement(By.XPath("/html/body/a"));
+            accessschedule.Click();
+            string popupHandle = string.Empty;
+            ReadOnlyCollection<string> windowHandles = driver.WindowHandles;
 
-            HttpClientHandler handler = new HttpClientHandler()
+            foreach (string handle in windowHandles)
+            {
+                if (handle != driver.CurrentWindowHandle)
                 {
-                    //todo: add cookie and credentials containers for future sign-ins without browser aid.
-                };
-
-            Console.WriteLine("GET: + " + TARGETURL);
-
-            // Use HttpClient.            
-            HttpClient client = new HttpClient(handler);
-
-            HttpResponseMessage response = await client.GetAsync(TARGETURL);
-            HttpContent content = response.Content;
-
-            // Check Status Code                                
-            Console.WriteLine("Response StatusCode: " + (int)response.StatusCode);
-            getcontentstring = await content.ReadAsStringAsync();
+                    popupHandle = handle;
+                    break;
+                }
+            }
+            driver.SwitchTo().Window(popupHandle);
+            wait.Until((d) => { return (d.Title.ToString().Contains("Welcome")); });
+            var schedule = driver.PageSource.ToString();
+            driver.Quit();
+            return schedule;
         }
        
         static public UserCredential setupGoogleCreds()
