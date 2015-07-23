@@ -1,5 +1,4 @@
 # ScheduleParser
-I do not own the contents of the "Welcome.html" file, it is simply an example of the input used for the program and is property of Wegmans Food Markets.
 
 This program is very much a work in progress.
 
