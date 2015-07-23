@@ -109,7 +109,7 @@ namespace ScheduleParser
             Console.WriteLine("Parsing DOM for HTML Tables");
             var correctTable = findTable(schedulestring);
             Console.WriteLine("Identified which Table is the Schedule...");
-            
+
 
             // Now we gotta parse our table for the values we want
             var rows = parseTable(correctTable);
@@ -127,7 +127,7 @@ namespace ScheduleParser
             // Now let's upload it to Google Calendar
             Console.WriteLine("Uploading to Google Calendar...");
             uploadResults(schedule, service, calendarId).Wait();
-         
+
             Console.WriteLine("Upload Complete, Press any key to exit.");
             Console.ReadKey();
         }
@@ -173,7 +173,7 @@ namespace ScheduleParser
             driver.Quit();
             return schedule;
         }
-       
+
         static public UserCredential setupGoogleCreds()
         {
             UserCredential credential;
@@ -362,7 +362,7 @@ namespace ScheduleParser
                 var request = new BatchRequest(service);
                 // Setup request for current events.
                 EventsResource.ListRequest listrequest = service.Events.List(calendarId);
-                listrequest.TimeMin = DateTime.Now;
+                listrequest.TimeMin = DateTime.Today.AddDays(-6);
                 listrequest.TimeMax = DateTime.Today.AddDays(15);
                 listrequest.ShowDeleted = false;
                 listrequest.SingleEvents = true;
