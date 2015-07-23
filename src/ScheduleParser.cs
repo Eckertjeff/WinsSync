@@ -17,7 +17,7 @@ using OpenQA.Selenium.Firefox;
 using OpenQA.Selenium.Support.UI;
 using System.Collections.ObjectModel;
 
-namespace ScheduleParser
+namespace WScheduler
 {
     class Cell { public string Value;}
     class Row { public List<Cell> Cells = new List<Cell>(); }
@@ -92,7 +92,8 @@ namespace ScheduleParser
             UserCredential credential = setupGoogleCreds();
             
             // Get out login info from a file, or the user.
-            string username, password;
+            string username = string.Empty;
+            string password = string.Empty;
             StreamReader logincreds = null;
             try
             {
@@ -106,8 +107,27 @@ namespace ScheduleParser
             {
                 if (logincreds != null)
                 {
-                    username = logincreds.ReadLine();
-                    password = logincreds.ReadLine();
+                    Console.WriteLine("Would you like to use your saved login info? Y/N: ");
+                    if (Console.ReadLine().Equals("y", StringComparison.OrdinalIgnoreCase))
+                    {
+                        username = logincreds.ReadLine();
+                        password = logincreds.ReadLine();
+                    }
+                    else
+                    {
+                        logincreds.Close();
+                        File.Delete("login.txt");
+                        Console.Write("Please Enter your username: ");
+                        username = Console.ReadLine();
+                        Console.Write("Please Enter your password: ");
+                        password = Console.ReadLine();
+                        Console.Write("Would you like to save your login info? Y/N: ");
+                        if (Console.ReadLine().Equals("y", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string creds = username + "\n" + password;
+                            File.WriteAllText("login.txt", creds);
+                        }
+                    }
                 }
                 else
                 {
