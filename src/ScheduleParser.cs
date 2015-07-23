@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -89,11 +89,38 @@ namespace ScheduleParser
 
             // Setup our Google credentials.
             UserCredential credential = setupGoogleCreds();
-
-            Console.Write("Please Enter your username: ");
-            var username = Console.ReadLine();
-            Console.Write("Please Enter your password: ");
-            var password = Console.ReadLine();
+            
+            string username, password;
+            StreamReader logincreds = null;
+            try
+            {
+                logincreds = new StreamReader("login.txt");
+            }
+            catch (FileNotFoundException)
+            {
+                Console.WriteLine("No Saved Login Credentials Detected.");
+            }
+            finally
+            {
+                if (logincreds != null)
+                {
+                    username = logincreds.ReadLine();
+                    password = logincreds.ReadLine();
+                }
+                else
+                {
+                    Console.Write("Please Enter your username: ");
+                    username = Console.ReadLine();
+                    Console.Write("Please Enter your password: ");
+                    password = Console.ReadLine();
+                    Console.Write("Would you like to save your login info? Y/N: ");
+                    if (Console.ReadLine().Equals("y", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string creds = username + "\n" + password;
+                        File.WriteAllText("login.txt", creds);
+                    }
+                }
+            }
 
             // GET our schedule
             var schedulestring = HTTP_GET(username, password);
