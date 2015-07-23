@@ -17,7 +17,7 @@ using OpenQA.Selenium.Firefox;
 using OpenQA.Selenium.Support.UI;
 using System.Collections.ObjectModel;
 
-namespace ScheduleParser
+namespace WScheduler
 {
     class Cell { public string Value;}
     class Row { public List<Cell> Cells = new List<Cell>(); }
@@ -80,6 +80,7 @@ namespace ScheduleParser
         static List<string> m_Tables = new List<string>();
         static string[] Scopes = { CalendarService.Scope.Calendar };
         static string ApplicationName = "WScheduler";
+        static string schedulestring1, schedulestring2, schedulestring3;
 
         static void Main(string[] args)
         {
@@ -90,7 +91,9 @@ namespace ScheduleParser
             // Setup our Google credentials.
             UserCredential credential = setupGoogleCreds();
             
-            string username, password;
+            // Get out login info from a file, or the user.
+            string username = string.Empty;
+            string password = string.Empty;
             StreamReader logincreds = null;
             try
             {
@@ -104,8 +107,27 @@ namespace ScheduleParser
             {
                 if (logincreds != null)
                 {
-                    username = logincreds.ReadLine();
-                    password = logincreds.ReadLine();
+                    Console.WriteLine("Would you like to use your saved login info? Y/N: ");
+                    if (Console.ReadLine().Equals("y", StringComparison.OrdinalIgnoreCase))
+                    {
+                        username = logincreds.ReadLine();
+                        password = logincreds.ReadLine();
+                    }
+                    else
+                    {
+                        logincreds.Close();
+                        File.Delete("login.txt");
+                        Console.Write("Please Enter your username: ");
+                        username = Console.ReadLine();
+                        Console.Write("Please Enter your password: ");
+                        password = Console.ReadLine();
+                        Console.Write("Would you like to save your login info? Y/N: ");
+                        if (Console.ReadLine().Equals("y", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string creds = username + "\n" + password;
+                            File.WriteAllText("login.txt", creds);
+                        }
+                    }
                 }
                 else
                 {
@@ -123,7 +145,7 @@ namespace ScheduleParser
             }
 
             // GET our schedule
-            var schedulestring = HTTP_GET(username, password);
+            HTTP_GET(username, password);
 
             // Create Google Calendar API service.
             var service = new CalendarService(new BaseClientService.Initializer()
@@ -134,32 +156,42 @@ namespace ScheduleParser
 
             // Parse the DOM, find our tables
             Console.WriteLine("Parsing DOM for HTML Tables");
-            var correctTable = findTable(schedulestring);
-            Console.WriteLine("Identified which Table is the Schedule...");
+            var correctTable1 = findTable(schedulestring1);
+            var correctTable2 = findTable(schedulestring2);
+            var correctTable3 = findTable(schedulestring3);
+            Console.WriteLine("Identified which Tables are the Schedule...");
 
 
             // Now we gotta parse our table for the values we want
-            var rows = parseTable(correctTable);
+            var rows1 = parseTable(correctTable1);
+            var rows2 = parseTable(correctTable2);
+            var rows3 = parseTable(correctTable3);
             Console.WriteLine("Parse complete...");
             Console.WriteLine(string.Empty);
             Console.ForegroundColor = originalColor;
 
             // Now that we have all the data in a parsable format
             // we need to parse the "rows" object
-            var schedule = parseRows(rows);
+            var schedule1 = parseRows(rows1);
+            var schedule2 = parseRows(rows2);
+            var schedule3 = parseRows(rows3);
 
             // Display our results to the user.
-            displayResults(schedule, originalColor);
+            displayResults(schedule1, originalColor);
+            displayResults(schedule2, originalColor);
+            displayResults(schedule3, originalColor);
 
             // Now let's upload it to Google Calendar
             Console.WriteLine("Uploading to Google Calendar...");
-            uploadResults(schedule, service, calendarId).Wait();
+            uploadResults(schedule1, service, calendarId).Wait();
+            uploadResults(schedule2, service, calendarId).Wait();
+            uploadResults(schedule3, service, calendarId).Wait();
 
             Console.WriteLine("Upload Complete, Press any key to exit.");
             Console.ReadKey();
         }
 
-        static public string HTTP_GET(string username, string password)
+        static public void HTTP_GET(string username, string password)
         {
             IWebDriver driver = new FirefoxDriver();
             driver.Navigate().GoToUrl("https://wegmans.sharepoint.com/resources/Pages/LaborPro.aspx");
@@ -196,9 +228,12 @@ namespace ScheduleParser
             }
             driver.SwitchTo().Window(popupHandle);
             wait.Until((d) => { return (d.Title.ToString().Contains("Welcome")); });
-            var schedule = driver.PageSource.ToString();
+            schedulestring1 = driver.PageSource.ToString();
+            driver.FindElement(By.XPath("//*[@id='pageBody']/form/table[2]/tbody/tr[2]/td/table/tbody/tr[2]/td/table/tbody/tr/td/div/table[1]/tbody/tr/td[1]/a[3]")).Click();
+            schedulestring2 = driver.PageSource.ToString();
+            driver.FindElement(By.XPath("//*[@id='pageBody']/form/table[2]/tbody/tr[2]/td/table/tbody/tr[2]/td/table/tbody/tr/td/div/table[1]/tbody/tr/td[1]/a[3]")).Click();
+            schedulestring3 = driver.PageSource.ToString();
             driver.Quit();
-            return schedule;
         }
 
         static public UserCredential setupGoogleCreds()
@@ -224,6 +259,7 @@ namespace ScheduleParser
             var endTable = "</table>";
             var startTable = "<table";
             int index = 0;
+            m_Tables.Clear();
 
             // Parse the DOM, find our tables
             while ((index = file.IndexOf(startTable, index + 1, StringComparison.OrdinalIgnoreCase)) != -1)
@@ -233,7 +269,7 @@ namespace ScheduleParser
 
                 Console.WriteLine("Found a table DOM element!");
 
-                m_Tables.Add(tableContent);
+                m_Tables.Add(tableContent); // This is what breaks a list of weeks.
             }
 
             // Identify the table that's actually relevant to us
