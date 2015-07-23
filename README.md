@@ -1,4 +1,4 @@
-# ScheduleParser
+# WScheduler
 
 This program is very much a work in progress.
 
