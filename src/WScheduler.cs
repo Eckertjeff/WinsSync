@@ -23,7 +23,8 @@ namespace WScheduler
     class Row { public List<Cell> Cells = new List<Cell>(); }
 
     /// <summary>
-    /// Represents a single record based on an HTML table in the DOM.
+    /// Uses Selenium WebDriver and PhantomJS to get the user's work schedule,
+    /// and then upload's the schedule to Google Calendar.
     /// </summary>
     class WorkDay
     {
@@ -156,18 +157,18 @@ namespace WScheduler
             });
 
             // Parse the DOM, find our tables
-            Console.WriteLine("Parsing DOM for HTML Tables");
+            //Console.WriteLine("Parsing DOM for HTML Tables");
             var correctTable1 = findTable(schedulestring1);
             var correctTable2 = findTable(schedulestring2);
             var correctTable3 = findTable(schedulestring3);
-            Console.WriteLine("Identified which Tables are the Schedule...");
+            //Console.WriteLine("Identified which Tables are the Schedule...");
 
 
             // Now we gotta parse our table for the values we want
             var rows1 = parseTable(correctTable1);
             var rows2 = parseTable(correctTable2);
             var rows3 = parseTable(correctTable3);
-            Console.WriteLine("Parse complete...");
+           // Console.WriteLine("Parse complete...");
             Console.WriteLine(string.Empty);
             Console.ForegroundColor = originalColor;
 
@@ -275,7 +276,7 @@ namespace WScheduler
                 var tableContentEndIndex = file.IndexOf(endTable, index, StringComparison.OrdinalIgnoreCase);
                 var tableContent = file.Substring(index, tableContentEndIndex - index + endTable.Length);
 
-                Console.WriteLine("Found a table DOM element!");
+                //Console.WriteLine("Found a table DOM element!");
 
                 m_Tables.Add(tableContent); // This is what breaks a list of weeks.
             }
@@ -315,7 +316,7 @@ namespace WScheduler
                 var rowContent = correctTable.Substring(index, rowContentEndIndex - index + rowEnd.Length);
                 var row = new Row();
 
-                Console.WriteLine("Found a row within the table...");
+                //Console.WriteLine("Found a row within the table...");
 
                 var index2 = 0;
                 while ((index2 = rowContent.IndexOf(cellStart, index2 + 1, StringComparison.OrdinalIgnoreCase)) != -1)
@@ -339,7 +340,7 @@ namespace WScheduler
                         actualValue = string.Empty; // Non breaking space is space...
                     }
 
-                    Console.WriteLine("Found a cell within the row with value '{0}'", actualValue);
+                    //Console.WriteLine("Found a cell within the row with value '{0}'", actualValue);
                     row.Cells.Add(new Cell { Value = actualValue });
                 }
 
