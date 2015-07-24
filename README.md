@@ -5,7 +5,7 @@ This program is very much a work in progress.
 This progam will log you in to the scheduling server, get your schedule, and then upload it to google calendar.
 
 Link to compiled program:
-https://drive.google.com/file/d/0B_QUjyn5aOC3UG03ZWx3SVpqQVU/view
+https://drive.google.com/file/d/0B_QUjyn5aOC3R0hVekgtN0NWVkE/view
 
 Future Expansions:
 
