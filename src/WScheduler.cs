@@ -1,4 +1,5 @@
-﻿using System;
+﻿//#define debug
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -157,13 +158,17 @@ namespace WScheduler
             });
 
             // Parse the DOM, find our tables
-            //Console.WriteLine("Parsing DOM for HTML Tables");
+#if debug
+            Console.WriteLine("Parsing DOM for HTML Tables");
+#endif
             List<string> correctTables = new List<string>();
             foreach (string week in m_Schedules)
             {
                 correctTables.Add(findTable(week));
             }
-            //Console.WriteLine("Identified which Tables are the Schedule...");
+#if debug
+            Console.WriteLine("Identified which Tables are the Schedule...");
+#endif
 
             // Now we gotta parse our table for the values we want
             List<Row> rows = new List<Row>();
@@ -171,7 +176,9 @@ namespace WScheduler
             {
                 rows.AddRange(parseTable(table));
             }
-            //Console.WriteLine("Parse complete...");
+#if debug
+            Console.WriteLine("Parse complete...");
+#endif
             Console.WriteLine(string.Empty);
             Console.ForegroundColor = originalColor;
             
@@ -277,9 +284,11 @@ namespace WScheduler
                 var tableContentEndIndex = file.IndexOf(endTable, index, StringComparison.OrdinalIgnoreCase);
                 var tableContent = file.Substring(index, tableContentEndIndex - index + endTable.Length);
 
-                //Console.WriteLine("Found a table DOM element!");
+#if debug
+                Console.WriteLine("Found a table DOM element!");
+#endif
 
-                m_Tables.Add(tableContent); // This is what breaks a list of weeks.
+                m_Tables.Add(tableContent);
             }
 
             // Identify the table that's actually relevant to us
@@ -317,7 +326,9 @@ namespace WScheduler
                 var rowContent = correctTable.Substring(index, rowContentEndIndex - index + rowEnd.Length);
                 var row = new Row();
 
-                //Console.WriteLine("Found a row within the table...");
+#if debug
+                Console.WriteLine("Found a row within the table...");
+#endif
 
                 var index2 = 0;
                 while ((index2 = rowContent.IndexOf(cellStart, index2 + 1, StringComparison.OrdinalIgnoreCase)) != -1)
@@ -341,7 +352,9 @@ namespace WScheduler
                         actualValue = string.Empty; // Non breaking space is space...
                     }
 
-                    //Console.WriteLine("Found a cell within the row with value '{0}'", actualValue);
+#if debug
+                    Console.WriteLine("Found a cell within the row with value '{0}'", actualValue);
+#endif
                     row.Cells.Add(new Cell { Value = actualValue });
                 }
 
