@@ -83,6 +83,7 @@ namespace WScheduler
         static List<string> m_Schedules = new List<string>();
         static string[] Scopes = { CalendarService.Scope.Calendar };
         static string ApplicationName = "WScheduler";
+        static string username = string.Empty, password = string.Empty;
 
         static void Main(string[] args)
         {
@@ -94,8 +95,6 @@ namespace WScheduler
             UserCredential credential = setupGoogleCreds();
             
             // Get our login info from a file, or the user.
-            string username = string.Empty;
-            string password = string.Empty;
             StreamReader logincreds = null;
             try
             {
@@ -110,45 +109,29 @@ namespace WScheduler
                 if (logincreds != null)
                 {
                     Console.Write("Would you like to use your saved login info? Y/N: ");
-                    if (Console.ReadLine().Equals("y", StringComparison.OrdinalIgnoreCase))
+                    if (Console.ReadLine().Equals("y", StringComparison.OrdinalIgnoreCase)) // Login creds exist and are used.
                     {
                         username = logincreds.ReadLine();
                         password = logincreds.ReadLine();
                     }
-                    else
+                    else // Login creds exist but user doesn't use them.
                     {
                         logincreds.Close();
                         File.Delete("login.txt");
-                        Console.Write("Please Enter your username: ");
-                        username = Console.ReadLine();
-                        Console.Write("Please Enter your password: ");
-                        password = Console.ReadLine();
-                        Console.Write("Would you like to save your login info? Y/N: ");
-                        if (Console.ReadLine().Equals("y", StringComparison.OrdinalIgnoreCase))
-                        {
-                            string creds = username + "\n" + password;
-                            File.WriteAllText("login.txt", creds);
-                        }
+                        getLoginCreds();
+                        saveLoginCreds();
                     }
                 }
-                else
+                else // Login creds don't exist
                 {
-                    Console.Write("Please Enter your username: ");
-                    username = Console.ReadLine();
-                    Console.Write("Please Enter your password: ");
-                    password = Console.ReadLine();
-                    Console.Write("Would you like to save your login info? Y/N: ");
-                    if (Console.ReadLine().Equals("y", StringComparison.OrdinalIgnoreCase))
-                    {
-                        string creds = username + "\n" + password;
-                        File.WriteAllText("login.txt", creds);
-                    }
+                    getLoginCreds();
+                    saveLoginCreds();
                 }
             }
 
             // GET our schedule
             Console.WriteLine("Getting your schedule... This could take a while...");
-            HTTP_GET(username, password);
+            HTTP_GET();
 
             // Create Google Calendar API service.
             var service = new CalendarService(new BaseClientService.Initializer()
@@ -198,7 +181,31 @@ namespace WScheduler
             Console.ReadKey();
         }
 
-        static public void HTTP_GET(string username, string password)
+        static public void getLoginCreds()
+        {
+            Console.Write("Please Enter your username: ");
+            username = Console.ReadLine();
+            while ((username.Contains("@wegmans.com") || username.Contains("@Wegmans.com")) == false)
+            {
+                Console.WriteLine("I don't think your username is correct...");
+                Console.Write("Please Enter your username: ");
+                username = Console.ReadLine();
+            }
+            Console.Write("Please Enter your password: ");
+            password = Console.ReadLine();
+        }
+
+        static public void saveLoginCreds()
+        {
+            Console.Write("Would you like to save your login info? Y/N: ");
+            if (Console.ReadLine().Equals("y", StringComparison.OrdinalIgnoreCase))
+            {
+                string creds = username + "\n" + password;
+                File.WriteAllText("login.txt", creds);
+            }
+        }
+
+        static public void HTTP_GET()
         {
             var driverService = PhantomJSDriverService.CreateDefaultService();
             driverService.HideCommandPromptWindow = true; // Disables verbose phantomjs output
@@ -221,8 +228,41 @@ namespace WScheduler
                 passwordentry.SendKeys(password);
                 passwordentry.Submit();
             }
+            wait.Until((d) => { return (d.Title.ToString().Contains("Sign In") || d.Title.ToString().Contains("My Schedule")); }); // Checks to see if the password was incorrect.
+            if (driver.Title.ToString() == "Sign In")
+            {
+
+                IWebElement error = driver.FindElement(By.XPath("//*[@id='error']"));
+                var errorString = error.Text.ToString();
+                if (errorString.Contains("Incorrect user ID or password"))
+                {
+                    while (driver.Title.ToString() == "Sign In")
+                    {
+                        IWebElement usernameentry = driver.FindElement(By.XPath("//*[@id='userNameInput']"));
+                        IWebElement passwordentry = driver.FindElement(By.XPath("//*[@id='passwordInput']"));
+                        usernameentry.Clear();
+                        passwordentry.Clear();
+                        Console.WriteLine("You seem to have entered the wrong username or password.");
+                        getLoginCreds();
+                        usernameentry.SendKeys(username);
+                        passwordentry.SendKeys(password);
+                        passwordentry.Submit();
+                    }
+                    File.Delete("login.txt");  // Update login credentials with correct ones.
+                    saveLoginCreds();
+                }
+                else
+                {
+                    Console.WriteLine("An unexpected error has occured with the webpage.");
+                    Console.WriteLine(errorString);
+                    driver.Quit();
+                    Console.ReadKey();
+                    Environment.Exit(0);
+                }
+            }
+
             Console.WriteLine("Waiting for LaborPro...");
-            wait.Until((d) => { return (d.SwitchTo().Frame(0)); }); // Waits for javascript to execute.
+            wait.Until((d) => { return (d.SwitchTo().Frame(0)); }); // Waits for the inline frame to load.
             string BaseWindow = driver.CurrentWindowHandle;
             wait.Until((d) => { return (d.FindElement(By.XPath("/html/body/a"))); }); // Waits until javascript generates the SSO link.
             IWebElement accessschedule = driver.FindElement(By.XPath("/html/body/a"));
@@ -239,6 +279,7 @@ namespace WScheduler
                 }
             }
             driver.SwitchTo().Window(popupHandle);
+
             Console.WriteLine("Accessing LaborPro.");
             wait.Until((d) => { return (d.Title.ToString().Contains("Welcome")); });
             m_Schedules.Add(driver.PageSource.ToString());
@@ -247,7 +288,6 @@ namespace WScheduler
                 driver.FindElement(By.XPath("//*[@id='pageBody']/form/table[2]/tbody/tr[2]/td/table/tbody/tr[2]/td/table/tbody/tr/td/div/table[1]/tbody/tr/td[1]/a[3]")).Click();
                 m_Schedules.Add(driver.PageSource.ToString());
             }
-
 
             driver.Quit();
             Console.WriteLine("Got your Schedule.");
@@ -369,7 +409,7 @@ namespace WScheduler
             var schedule = new List<WorkDay>();
             for (int i = 0; i < 3; i++)
             {
-                var dateRow = rows[1 + (i * 8)]; // First row is empty... classic
+                var dateRow = rows[1 + (i * 8)]; // First row is empty, then adds a week each iteration.
                 var scheduleHoursRow = rows[2 + (i * 8)];
                 var activityRow = rows[3 + (i * 8)];
                 var locationRow = rows[4 + (i * 8)];
@@ -413,7 +453,6 @@ namespace WScheduler
                     schedule.Add(workDay);
                     dayIndex++;
                 }
-                dayIndex *= i;
             }
             return schedule;
         }
