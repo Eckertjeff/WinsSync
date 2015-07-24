@@ -13,9 +13,9 @@ using Google.Apis.Requests;
 using System.Threading;
 using System.Net.Http;
 using OpenQA.Selenium;
-using OpenQA.Selenium.Firefox;
 using OpenQA.Selenium.Support.UI;
 using System.Collections.ObjectModel;
+using OpenQA.Selenium.PhantomJS;
 
 namespace WScheduler
 {
@@ -145,6 +145,7 @@ namespace WScheduler
             }
 
             // GET our schedule
+            Console.WriteLine("Getting your schedule... This could take a while...");
             HTTP_GET(username, password);
 
             // Create Google Calendar API service.
@@ -193,7 +194,10 @@ namespace WScheduler
 
         static public void HTTP_GET(string username, string password)
         {
-            IWebDriver driver = new FirefoxDriver();
+            var driverService = PhantomJSDriverService.CreateDefaultService();
+            driverService.HideCommandPromptWindow = true; // Disables verbose phantomjs output
+            IWebDriver driver = new PhantomJSDriver(driverService);
+            Console.WriteLine("Logging into Office 365.");
             driver.Navigate().GoToUrl("https://wegmans.sharepoint.com/resources/Pages/LaborPro.aspx");
             if (driver.Title.ToString() == "Sign in to Office 365")
             {
@@ -202,6 +206,7 @@ namespace WScheduler
                 IWebElement rememberme = driver.FindElement(By.XPath("//*[@id='cred_keep_me_signed_in_checkbox']"));
                 rememberme.Click();
             }
+            Console.WriteLine("Logging into Sharepoint.");
             WebDriverWait wait = new WebDriverWait(driver, TimeSpan.FromSeconds(10));
             wait.Until((d) => { return (d.Title.ToString().Contains("Sign In") || d.Title.ToString().Contains("My Schedule")); }); // Sometimes it skips the second login page.
             if (driver.Title.ToString() == "Sign In")
@@ -210,7 +215,8 @@ namespace WScheduler
                 passwordentry.SendKeys(password);
                 passwordentry.Submit();
             }
-            Thread.Sleep(TimeSpan.FromSeconds(10)); // Sleep until javascript executes and generates the SSO link, terrible design.
+            Console.WriteLine("Waiting for LaborPro...");
+            Thread.Sleep(TimeSpan.FromSeconds(5)); // Sleep until javascript executes and generates the SSO link, terrible design.
             string BaseWindow = driver.CurrentWindowHandle;
             driver.SwitchTo().Frame(0);
             IWebElement accessschedule = driver.FindElement(By.XPath("/html/body/a"));
@@ -227,6 +233,7 @@ namespace WScheduler
                 }
             }
             driver.SwitchTo().Window(popupHandle);
+            Console.WriteLine("Accessing LaborPro.");
             wait.Until((d) => { return (d.Title.ToString().Contains("Welcome")); });
             schedulestring1 = driver.PageSource.ToString();
             driver.FindElement(By.XPath("//*[@id='pageBody']/form/table[2]/tbody/tr[2]/td/table/tbody/tr[2]/td/table/tbody/tr/td/div/table[1]/tbody/tr/td[1]/a[3]")).Click();
@@ -234,6 +241,7 @@ namespace WScheduler
             driver.FindElement(By.XPath("//*[@id='pageBody']/form/table[2]/tbody/tr[2]/td/table/tbody/tr[2]/td/table/tbody/tr/td/div/table[1]/tbody/tr/td[1]/a[3]")).Click();
             schedulestring3 = driver.PageSource.ToString();
             driver.Quit();
+            Console.WriteLine("Got your Schedule.");
         }
 
         static public UserCredential setupGoogleCreds()
@@ -249,7 +257,7 @@ namespace WScheduler
                 credential = GoogleWebAuthorizationBroker.AuthorizeAsync(
                     GoogleClientSecrets.Load(stream).Secrets, Scopes, "user", CancellationToken.None,
                     new FileDataStore(credPath, true)).Result;
-                Console.WriteLine("Credential file saved to: " + credPath);
+                Console.WriteLine("Google Credentials file saved to: " + credPath);
                 return credential;
             }
         }
@@ -399,8 +407,8 @@ namespace WScheduler
             {
                 if (day.Hours == 0)
                 {
-                    Console.WriteLine("You get " + day.Day.ToString() + " off!");
-                    Console.WriteLine(string.Empty);
+                    //Console.WriteLine("You get " + day.Day.ToString() + " off!");
+                    //Console.WriteLine(string.Empty);
                     continue;
                 }
 
