@@ -25,6 +25,7 @@ namespace WScheduler
 
     /// <summary>
     /// Uses Selenium WebDriver and PhantomJS to get the user's work schedule,
+    /// parses the html document for the relevant information,
     /// and then upload's the schedule to Google Calendar.
     /// </summary>
     class WorkDay
