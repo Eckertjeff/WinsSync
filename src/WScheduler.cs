@@ -20,7 +20,7 @@ using OpenQA.Selenium.PhantomJS;
 namespace WScheduler
 {
     class Cell { public string Value;}
-    class Row { public List<Cell> Cells = new List<Cell>(); }
+    class Row { public List<Cell> Cells = new List<Cell>();}
 
     /// <summary>
     /// Uses Selenium WebDriver and PhantomJS to get the user's work schedule,
@@ -79,9 +79,9 @@ namespace WScheduler
     class Program
     {
         static List<string> m_Tables = new List<string>();
+        static List<string> m_Schedules = new List<string>();
         static string[] Scopes = { CalendarService.Scope.Calendar };
         static string ApplicationName = "WScheduler";
-        static string schedulestring1, schedulestring2, schedulestring3;
 
         static void Main(string[] args)
         {
@@ -92,7 +92,7 @@ namespace WScheduler
             // Setup our Google credentials.
             UserCredential credential = setupGoogleCreds();
             
-            // Get out login info from a file, or the user.
+            // Get our login info from a file, or the user.
             string username = string.Empty;
             string password = string.Empty;
             StreamReader logincreds = null;
@@ -108,7 +108,7 @@ namespace WScheduler
             {
                 if (logincreds != null)
                 {
-                    Console.WriteLine("Would you like to use your saved login info? Y/N: ");
+                    Console.Write("Would you like to use your saved login info? Y/N: ");
                     if (Console.ReadLine().Equals("y", StringComparison.OrdinalIgnoreCase))
                     {
                         username = logincreds.ReadLine();
@@ -158,36 +158,34 @@ namespace WScheduler
 
             // Parse the DOM, find our tables
             //Console.WriteLine("Parsing DOM for HTML Tables");
-            var correctTable1 = findTable(schedulestring1);
-            var correctTable2 = findTable(schedulestring2);
-            var correctTable3 = findTable(schedulestring3);
+            List<string> correctTables = new List<string>();
+            foreach (string week in m_Schedules)
+            {
+                correctTables.Add(findTable(week));
+            }
             //Console.WriteLine("Identified which Tables are the Schedule...");
 
-
             // Now we gotta parse our table for the values we want
-            var rows1 = parseTable(correctTable1);
-            var rows2 = parseTable(correctTable2);
-            var rows3 = parseTable(correctTable3);
-           // Console.WriteLine("Parse complete...");
+            List<Row> rows = new List<Row>();
+            foreach (string table in correctTables)
+            {
+                rows.AddRange(parseTable(table));
+            }
+            //Console.WriteLine("Parse complete...");
             Console.WriteLine(string.Empty);
             Console.ForegroundColor = originalColor;
-
+            
+           
             // Now that we have all the data in a parsable format
             // we need to parse the "rows" object
-            var schedule1 = parseRows(rows1);
-            var schedule2 = parseRows(rows2);
-            var schedule3 = parseRows(rows3);
+            var schedule = parseRows(rows);
 
             // Display our results to the user.
-            displayResults(schedule1, originalColor);
-            displayResults(schedule2, originalColor);
-            displayResults(schedule3, originalColor);
+            displayResults(schedule, originalColor);
 
             // Now let's upload it to Google Calendar
             Console.WriteLine("Uploading to Google Calendar...");
-            uploadResults(schedule1, service, calendarId).Wait();
-            uploadResults(schedule2, service, calendarId).Wait();
-            uploadResults(schedule3, service, calendarId).Wait();
+            uploadResults(schedule, service, calendarId).Wait();
 
             Console.WriteLine("Upload Complete, Press any key to exit.");
             Console.ReadKey();
@@ -217,9 +215,9 @@ namespace WScheduler
                 passwordentry.Submit();
             }
             Console.WriteLine("Waiting for LaborPro...");
-            Thread.Sleep(TimeSpan.FromSeconds(5)); // Sleep until javascript executes and generates the SSO link, terrible design.
+            wait.Until((d) => { return (d.SwitchTo().Frame(0)); }); // Waits for javascript to execute.
             string BaseWindow = driver.CurrentWindowHandle;
-            driver.SwitchTo().Frame(0);
+            wait.Until((d) => { return (d.FindElement(By.XPath("/html/body/a"))); }); // Waits until javascript generates the SSO link.
             IWebElement accessschedule = driver.FindElement(By.XPath("/html/body/a"));
             accessschedule.Click();
             string popupHandle = string.Empty;
@@ -236,11 +234,14 @@ namespace WScheduler
             driver.SwitchTo().Window(popupHandle);
             Console.WriteLine("Accessing LaborPro.");
             wait.Until((d) => { return (d.Title.ToString().Contains("Welcome")); });
-            schedulestring1 = driver.PageSource.ToString();
-            driver.FindElement(By.XPath("//*[@id='pageBody']/form/table[2]/tbody/tr[2]/td/table/tbody/tr[2]/td/table/tbody/tr/td/div/table[1]/tbody/tr/td[1]/a[3]")).Click();
-            schedulestring2 = driver.PageSource.ToString();
-            driver.FindElement(By.XPath("//*[@id='pageBody']/form/table[2]/tbody/tr[2]/td/table/tbody/tr[2]/td/table/tbody/tr/td/div/table[1]/tbody/tr/td[1]/a[3]")).Click();
-            schedulestring3 = driver.PageSource.ToString();
+            m_Schedules.Add(driver.PageSource.ToString());
+            for (int i = 0; i < 2; i++) // Clicks "Next" and gets the schedules for the next two weeks.
+            {
+                driver.FindElement(By.XPath("//*[@id='pageBody']/form/table[2]/tbody/tr[2]/td/table/tbody/tr[2]/td/table/tbody/tr/td/div/table[1]/tbody/tr/td[1]/a[3]")).Click();
+                m_Schedules.Add(driver.PageSource.ToString());
+            }
+
+
             driver.Quit();
             Console.WriteLine("Got your Schedule.");
         }
@@ -353,51 +354,53 @@ namespace WScheduler
         static public List<WorkDay> parseRows(List<Row> rows)
         {
             var schedule = new List<WorkDay>();
-
-            var dateRow = rows[1]; // First row is empty... classic
-            var scheduleHoursRow = rows[2];
-            var activityRow = rows[3];
-            var locationRow = rows[4];
-            var scheduleTimesRow = rows[5];
-            var commentsRow = rows[6];
-
-            int dayIndex = 1; // 0 is column names
-            while (true)
+            for (int i = 0; i < 3; i++)
             {
-                var workDay = new WorkDay();
-                var dateString = dateRow.Cells[dayIndex].Value;
+                var dateRow = rows[1 + (i * 8)]; // First row is empty... classic
+                var scheduleHoursRow = rows[2 + (i * 8)];
+                var activityRow = rows[3 + (i * 8)];
+                var locationRow = rows[4 + (i * 8)];
+                var scheduleTimesRow = rows[5 + (i * 8)];
+                var commentsRow = rows[6 + (i * 8)];
 
-                // Get the day of the week
-                workDay.Day = WorkDay.Get(dateString);
-                if (workDay.Day == WorkDay.DayEnum.INVALID)
+                int dayIndex = 1; // 0 is column names
+                while (true)
                 {
-                    break;
+                    var workDay = new WorkDay();
+                    var dateString = dateRow.Cells[dayIndex].Value;
+
+                    // Get the day of the week
+                    workDay.Day = WorkDay.Get(dateString);
+                    if (workDay.Day == WorkDay.DayEnum.INVALID)
+                    {
+                        break;
+                    }
+
+                    // split the string "Tue 6/23"
+                    // and use the second part ['Tue', '6/23']
+                    var datePart = dateString.Split(' ')[1];
+                    workDay.Date = DateTime.Parse(datePart);
+
+                    workDay.Hours = float.Parse(scheduleHoursRow.Cells[dayIndex].Value.Replace(":", "."));
+                    workDay.Activity = activityRow.Cells[dayIndex].Value;
+                    workDay.Comments = commentsRow.Cells[dayIndex].Value;
+                    workDay.Location = locationRow.Cells[dayIndex].Value;
+
+                    var timeSpanPart = scheduleTimesRow.Cells[dayIndex].Value;
+                    var times = timeSpanPart.Split('-'); // split '2:00 AM-8:00 PM' on the '-'
+
+                    workDay.StartTime = times[0];
+                    workDay.EndTime = times.Length == 1 ? times[0] : times[1];
+
+                    if (workDay.Hours > 0)
+                    {
+                        workDay.StartDateTime = DateTime.Parse(workDay.Date.ToShortDateString() + " " + workDay.StartTime);
+                        workDay.EndDateTime = DateTime.Parse(workDay.Date.ToShortDateString() + " " + workDay.EndTime);
+                    }
+                    schedule.Add(workDay);
+                    dayIndex++;
                 }
-
-                // split the string "Tue 6/23"
-                // and use the second part ['Tue', '6/23']
-                var datePart = dateString.Split(' ')[1];
-                workDay.Date = DateTime.Parse(datePart);
-
-                workDay.Hours = float.Parse(scheduleHoursRow.Cells[dayIndex].Value.Replace(":", "."));
-                workDay.Activity = activityRow.Cells[dayIndex].Value;
-                workDay.Comments = commentsRow.Cells[dayIndex].Value;
-                workDay.Location = locationRow.Cells[dayIndex].Value;
-
-                var timeSpanPart = scheduleTimesRow.Cells[dayIndex].Value;
-                var times = timeSpanPart.Split('-'); // split '2:00 AM-8:00 PM' on the '-'
-
-                workDay.StartTime = times[0];
-                workDay.EndTime = times.Length == 1 ? times[0] : times[1];
-
-                if (workDay.Hours > 0)
-                {
-                    workDay.StartDateTime = DateTime.Parse(workDay.Date.ToShortDateString() + " " + workDay.StartTime);
-                    workDay.EndDateTime = DateTime.Parse(workDay.Date.ToShortDateString() + " " + workDay.EndTime);
-                }
-
-                schedule.Add(workDay);
-                dayIndex++;
+                dayIndex *= i;
             }
             return schedule;
         }
