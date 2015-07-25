@@ -84,7 +84,7 @@ namespace WScheduler
         static List<string> m_Schedules = new List<string>();
         static string[] Scopes = { CalendarService.Scope.Calendar };
         static string ApplicationName = "WScheduler";
-        static string username = string.Empty, password = string.Empty;
+        static string username = string.Empty, password = string.Empty, success = string.Empty, savedLogin = string.Empty;
 
         static void Main(string[] args)
         {
@@ -93,10 +93,27 @@ namespace WScheduler
             Console.ForegroundColor = ConsoleColor.Cyan;
 
             // Setup our Google credentials.
-            UserCredential credential = setupGoogleCreds();
-            
+            UserCredential credential = setupGoogleCreds();    
+           
             // Get our login info from a file, or the user.
             StreamReader logincreds = null;
+            try // Checks the logincreds file to see if the last run was successful,
+            {   // and if no input was requested for future runs.
+                logincreds = new StreamReader("login.txt");
+            }
+            catch (FileNotFoundException)
+            {
+                // don't do anything, if this is the case we'll inform the user in a second.
+            }
+            finally
+            {
+                if (logincreds != null)
+                {
+                    success = logincreds.ReadLine();
+                    logincreds.Close();
+                }
+            }
+
             try
             {
                 logincreds = new StreamReader("login.txt");
@@ -109,18 +126,29 @@ namespace WScheduler
             {
                 if (logincreds != null)
                 {
-                    Console.Write("Would you like to use your saved login info? Y/N: ");
-                    if (Console.ReadLine().Equals("y", StringComparison.OrdinalIgnoreCase)) // Login creds exist and are used.
+                    if (success == "Success")
                     {
+                        success = logincreds.ReadLine();
                         username = logincreds.ReadLine();
                         password = logincreds.ReadLine();
-                    }
-                    else // Login creds exist but user doesn't use them.
-                    {
                         logincreds.Close();
-                        File.Delete("login.txt");
-                        getLoginCreds();
-                        saveLoginCreds();
+                    }
+                    else
+                    {
+                        Console.Write("Would you like to use your saved login info? Y/N: ");
+                        if (Console.ReadLine().Equals("y", StringComparison.OrdinalIgnoreCase)) // Login creds exist and are used.
+                        {
+                            username = logincreds.ReadLine();
+                            password = logincreds.ReadLine();
+                            logincreds.Close();
+                        }
+                        else // Login creds exist but user doesn't use them.
+                        {
+                            logincreds.Close();
+                            File.Delete("login.txt");
+                            getLoginCreds();
+                            saveLoginCreds();
+                        }
                     }
                 }
                 else // Login creds don't exist
@@ -129,6 +157,7 @@ namespace WScheduler
                     saveLoginCreds();
                 }
             }
+            
 
             // GET our schedule
             Console.WriteLine("Getting your schedule... This could take a while...");
@@ -177,9 +206,25 @@ namespace WScheduler
             // Now let's upload it to Google Calendar
             Console.WriteLine("Uploading to Google Calendar...");
             uploadResults(schedule, service, calendarId).Wait();
+            Console.WriteLine("Upload Complete.");
 
-            Console.WriteLine("Upload Complete, Press any key to exit.");
-            Console.ReadKey();
+            // After a successful run with input, ask the user if they would like to run without input next time.  
+            if ((success != "Success") && (savedLogin == "Saved") )
+            {
+                Console.Write("Would you like to remove all user input from future runs? Y/N: ");
+                if (Console.ReadLine().Equals("Y", StringComparison.OrdinalIgnoreCase))
+                {
+                    successfulRun();
+                    Console.WriteLine("Alright, all future runs will require no input.");
+                    string loginPath = Path.GetFullPath("login.txt");
+                    Console.WriteLine("To reset your password, manually delete the file at: ");
+                    Console.WriteLine(string.Empty);
+                    Console.WriteLine(loginPath);
+                }
+                Console.WriteLine(string.Empty);
+                Console.WriteLine("Press Any key to exit.");
+                Console.ReadKey();
+            }
         }
 
         static public void getLoginCreds()
@@ -203,6 +248,7 @@ namespace WScheduler
             {
                 string creds = username + "\n" + password;
                 File.WriteAllText("login.txt", creds);
+                savedLogin = "Saved";
             }
         }
 
@@ -221,7 +267,7 @@ namespace WScheduler
                 rememberme.Click();
             }
             Console.WriteLine("Logging into Sharepoint.");
-            WebDriverWait wait = new WebDriverWait(driver, TimeSpan.FromSeconds(10));
+            WebDriverWait wait = new WebDriverWait(driver, TimeSpan.FromSeconds(60));
             wait.Until((d) => { return (d.Title.ToString().Contains("Sign In") || d.Title.ToString().Contains("My Schedule")); }); // Sometimes it skips the second login page.
             if (driver.Title.ToString() == "Sign In")
             {
@@ -263,9 +309,29 @@ namespace WScheduler
             }
 
             Console.WriteLine("Waiting for LaborPro...");
-            wait.Until((d) => { return (d.SwitchTo().Frame(0)); }); // Waits for the inline frame to load.
+            try { wait.Until((d) => { return (d.SwitchTo().Frame(0)); }); } // Waits for the inline frame to load.
+            catch (WebDriverTimeoutException)
+            {
+                Console.WriteLine("LaborPro link window was not generated properly.");
+                driver.Quit();
+                if (success != "Success")
+                {
+                    Console.ReadKey();
+                }
+                Environment.Exit(1);
+            }
             string BaseWindow = driver.CurrentWindowHandle;
-            wait.Until((d) => { return (d.FindElement(By.XPath("/html/body/a"))); }); // Waits until javascript generates the SSO link.
+            try { wait.Until((d) => { return (d.FindElement(By.XPath("/html/body/a"))); }); } // Waits until javascript generates the SSO link.
+            catch (WebDriverTimeoutException)
+            {
+                Console.WriteLine("LaborPro SSO Link was not generated properly.");
+                if (success != "Success")
+                {
+                    Console.ReadKey();
+                }
+                driver.Quit();
+                Environment.Exit(1);
+            }
             IWebElement accessschedule = driver.FindElement(By.XPath("/html/body/a"));
             accessschedule.Click();
             string popupHandle = string.Empty;
@@ -282,7 +348,17 @@ namespace WScheduler
             driver.SwitchTo().Window(popupHandle);
 
             Console.WriteLine("Accessing LaborPro.");
-            wait.Until((d) => { return (d.Title.ToString().Contains("Welcome")); });
+            try { wait.Until((d) => { return (d.Title.ToString().Contains("Welcome")); }); }
+            catch (WebDriverTimeoutException)
+            {
+                Console.WriteLine("Did not properly switch to LabroPro Window.");
+                if (success != "Success")
+                {
+                    Console.ReadKey();
+                }
+                driver.Quit();
+                Environment.Exit(1);
+            }
             m_Schedules.Add(driver.PageSource.ToString());
             for (int i = 0; i < 2; i++) // Clicks "Next" and gets the schedules for the next two weeks.
             {
@@ -552,6 +628,13 @@ namespace WScheduler
                 // Execute batch request.
                 await request.ExecuteAsync();
             }
+        }
+        
+        static public void successfulRun()
+        {
+            File.Delete("login.txt");
+            string creds = "Success\n" + username + "\n" + password;
+            File.WriteAllText("login.txt", creds);
         }
 
     }
