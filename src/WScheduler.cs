@@ -160,7 +160,23 @@ namespace WScheduler
 
             // GET our schedule
             Console.WriteLine("Getting your schedule... This could take a while...");
-            HTTP_GET();
+            int retries = 3;
+            int errcode = 0;
+            while (retries > 0)
+            {
+
+                errcode = HTTP_GET();
+                if (errcode == 0)
+                {
+                    break;
+                }
+                else
+                {
+                    Console.WriteLine("There was a problem getting your schedule, Error Code:" + errcode);
+                    Console.WriteLine("Let's try again.");
+                }
+                retries--;
+            }
 
             // Create Google Calendar API service.
             var service = new CalendarService(new BaseClientService.Initializer()
@@ -204,7 +220,7 @@ namespace WScheduler
 
             // Now let's upload it to Google Calendar
             Console.WriteLine("Uploading to Google Calendar...");
-            int retries = 3;
+            retries = 3;
             while (true)
             {
                 try
@@ -251,7 +267,7 @@ namespace WScheduler
             while ((username.Contains("@wegmans.com") || username.Contains("@Wegmans.com")) == false)
             {
                 Console.WriteLine("I don't think your username is correct...");
-                Console.Write("Please Enter your username: ");
+                Console.Write("Please Enter your username@wegmans.com: ");
                 username = Console.ReadLine();
             }
             Console.Write("Please Enter your password: ");
@@ -269,7 +285,7 @@ namespace WScheduler
             }
         }
 
-        static public void HTTP_GET()
+        static public int HTTP_GET()
         {
             var driverService = PhantomJSDriverService.CreateDefaultService();
             driverService.HideCommandPromptWindow = true; // Disables verbose phantomjs output
@@ -294,11 +310,22 @@ namespace WScheduler
                     Console.ReadKey();
                 }
                 driver.Quit();
-                Environment.Exit(1);
+                return 1;
             }
 
             if (driver.Title.ToString() == "Sign In")
             {
+                try { wait.Until((d) => { return (d.FindElement(By.XPath("//*[@id='passwordInput']"))); }); }
+                catch (Exception)
+                {
+                    Console.WriteLine("Password input box did not load correctly.");
+                    if (success != "Success")
+                    {
+                        Console.ReadKey();
+                    }
+                    driver.Quit();
+                    return 2;
+                }
                 IWebElement passwordentry = driver.FindElement(By.XPath("//*[@id='passwordInput']"));
                 passwordentry.SendKeys(password);
                 passwordentry.Submit();
@@ -312,7 +339,7 @@ namespace WScheduler
                     Console.ReadKey();
                 }
                 driver.Quit();
-                Environment.Exit(1);
+                return 3;
             }
             if (driver.Title.ToString() == "Sign In")
             {
@@ -341,7 +368,7 @@ namespace WScheduler
                     Console.WriteLine(errorString);
                     driver.Quit();
                     Console.ReadKey();
-                    Environment.Exit(0);
+                    return 4;
                 }
             }
 
@@ -355,11 +382,11 @@ namespace WScheduler
                 {
                     Console.ReadKey();
                 }
-                Environment.Exit(1);
+                return 5;
             }
             string BaseWindow = driver.CurrentWindowHandle;
             try { wait.Until((d) => { return (d.FindElement(By.XPath("/html/body/a"))); }); } // Waits until javascript generates the SSO link.
-            catch (WebDriverTimeoutException)
+            catch (Exception)
             {
                 Console.WriteLine("LaborPro SSO Link was not generated properly.");
                 if (success != "Success")
@@ -367,7 +394,7 @@ namespace WScheduler
                     Console.ReadKey();
                 }
                 driver.Quit();
-                Environment.Exit(1);
+                return 6;
             }
             IWebElement accessschedule = driver.FindElement(By.XPath("/html/body/a"));
             accessschedule.Click();
@@ -394,7 +421,7 @@ namespace WScheduler
                     Console.ReadKey();
                 }
                 driver.Quit();
-                Environment.Exit(1);
+                return 7;
             }
             m_Schedules.Add(driver.PageSource.ToString());
             for (int i = 0; i < 2; i++) // Clicks "Next" and gets the schedules for the next two weeks.
@@ -405,6 +432,7 @@ namespace WScheduler
 
             driver.Quit();
             Console.WriteLine("Got your Schedule.");
+            return 0;
         }
 
         static public UserCredential setupGoogleCreds()
