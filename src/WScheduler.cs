@@ -145,7 +145,6 @@ namespace WScheduler
                         else // Login creds exist but user doesn't use them.
                         {
                             logincreds.Close();
-                            File.Delete("login.txt");
                             getLoginCreds();
                             saveLoginCreds();
                         }
@@ -205,14 +204,32 @@ namespace WScheduler
 
             // Now let's upload it to Google Calendar
             Console.WriteLine("Uploading to Google Calendar...");
-            uploadResults(schedule, service, calendarId).Wait();
-            Console.WriteLine("Upload Complete.");
-
-            // After a successful run with input, ask the user if they would like to run without input next time.  
-            if ((success != "Success") && (savedLogin == "Saved") )
+            int retries = 3;
+            while (true)
             {
-                Console.Write("Would you like to remove all user input from future runs? Y/N: ");
-                if (Console.ReadLine().Equals("Y", StringComparison.OrdinalIgnoreCase))
+                try
+                {
+                    uploadResults(schedule, service, calendarId).Wait();
+                    break;
+                }
+                catch (Exception)
+                {
+                    if (--retries == 0)
+                    {
+                        throw;
+                    }
+                    else
+                    Console.WriteLine("Something happened with the upload, let's try again.");
+                }
+            }
+            
+            Console.WriteLine("Upload Complete, Press Enter to exit.");
+
+            // After a successful run with input, allow the user to enter "Automate" to remove all needed user input from future runs.
+            // Don't prompt the user to use this mode, since it's a hassle to stop automated runs.
+            if (success != "Success")
+            {
+                if ((Console.ReadLine().Equals("Automate") && (savedLogin == "Saved")))
                 {
                     successfulRun();
                     Console.WriteLine("Alright, all future runs will require no input.");
@@ -220,10 +237,10 @@ namespace WScheduler
                     Console.WriteLine("To reset your password, manually delete the file at: ");
                     Console.WriteLine(string.Empty);
                     Console.WriteLine(loginPath);
+                    Console.WriteLine(string.Empty);
+                    Console.WriteLine("Press Any key to exit.");
+                    Console.ReadKey();
                 }
-                Console.WriteLine(string.Empty);
-                Console.WriteLine("Press Any key to exit.");
-                Console.ReadKey();
             }
         }
 
@@ -268,14 +285,35 @@ namespace WScheduler
             }
             Console.WriteLine("Logging into Sharepoint.");
             WebDriverWait wait = new WebDriverWait(driver, TimeSpan.FromSeconds(60));
-            wait.Until((d) => { return (d.Title.ToString().Contains("Sign In") || d.Title.ToString().Contains("My Schedule")); }); // Sometimes it skips the second login page.
+            try { wait.Until((d) => { return (d.Title.ToString().Contains("Sign In") || d.Title.ToString().Contains("My Schedule")); }); } // Sometimes it skips the second login page.
+            catch (WebDriverTimeoutException)
+            {
+                Console.WriteLine("Did not recieve an appropriate response from the Sharepoint server. The connection most likely timed out.");
+                if (success != "Success")
+                {
+                    Console.ReadKey();
+                }
+                driver.Quit();
+                Environment.Exit(1);
+            }
+
             if (driver.Title.ToString() == "Sign In")
             {
                 IWebElement passwordentry = driver.FindElement(By.XPath("//*[@id='passwordInput']"));
                 passwordentry.SendKeys(password);
                 passwordentry.Submit();
             }
-            wait.Until((d) => { return (d.Title.ToString().Contains("Sign In") || d.Title.ToString().Contains("My Schedule")); }); // Checks to see if the password was incorrect.
+            try { wait.Until((d) => { return (d.Title.ToString().Contains("Sign In") || d.Title.ToString().Contains("My Schedule")); }); } // Checks to see if the password was incorrect.
+            catch (WebDriverTimeoutException)
+            {
+                Console.WriteLine("Did not recieve an appropriate response from the Sharepoint server. The connection most likely timed out.");
+                if (success != "Success")
+                {
+                    Console.ReadKey();
+                }
+                driver.Quit();
+                Environment.Exit(1);
+            }
             if (driver.Title.ToString() == "Sign In")
             {
 
@@ -295,7 +333,6 @@ namespace WScheduler
                         passwordentry.SendKeys(password);
                         passwordentry.Submit();
                     }
-                    File.Delete("login.txt");  // Update login credentials with correct ones.
                     saveLoginCreds();
                 }
                 else
@@ -312,7 +349,7 @@ namespace WScheduler
             try { wait.Until((d) => { return (d.SwitchTo().Frame(0)); }); } // Waits for the inline frame to load.
             catch (WebDriverTimeoutException)
             {
-                Console.WriteLine("LaborPro link window was not generated properly.");
+                Console.WriteLine("LaborPro link's inline frame was not generated properly.");
                 driver.Quit();
                 if (success != "Success")
                 {
@@ -632,7 +669,6 @@ namespace WScheduler
         
         static public void successfulRun()
         {
-            File.Delete("login.txt");
             string creds = "Success\n" + username + "\n" + password;
             File.WriteAllText("login.txt", creds);
         }
