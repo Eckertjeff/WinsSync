@@ -88,8 +88,6 @@ namespace WScheduler
         static List<string> m_Schedules = new List<string>();
         static string[] Scopes = { CalendarService.Scope.Calendar };
         static string ApplicationName = "WScheduler";
-        static string username = string.Empty, password = string.Empty;
-        static string success = string.Empty, savedLogin = string.Empty;
 
         static void Main(string[] args)
         {
@@ -98,13 +96,133 @@ namespace WScheduler
             Console.ForegroundColor = ConsoleColor.Cyan;
 
             // Setup our Google credentials.
-            UserCredential credential = setupGoogleCreds();    
+            UserCredential credential = SetupGoogleCreds();    
            
             // Get our login info from a file, or the user.
+            string username = string.Empty, password = string.Empty;
+            string automate = string.Empty, savedlogin = string.Empty;
+            savedlogin = LoadLoginCreds(ref username, ref password); 
+
+            // GET our schedule
+            Console.WriteLine("Getting your schedule... This could take a while...");
+            int retries = 3;
+            int errcode = 0;
+            while (retries > 0)
+            {
+                errcode = HTTP_GET(username, password, automate, savedlogin);
+                if (errcode == 0)
+                {
+                    break;
+                }
+                else
+                {
+                    Console.WriteLine("There was a problem getting your schedule, Error Code:" + errcode);
+                    Console.WriteLine("Let's try loggin in again.");
+                }
+                retries--;
+                if (retries == 0)
+                {
+                    Console.WriteLine("We tried getting your schedule three times and it didn't work.");
+                    Console.WriteLine("Something must be up with your connection to the server.");
+                    Console.WriteLine("Please check your connection and try again.");
+                    if (automate != "Automate")
+                    {
+                        Console.ReadKey();
+                    }
+                    Environment.Exit(0);
+                }
+            }
+
+            // Create Google Calendar API service.
+            CalendarService service = new CalendarService(new BaseClientService.Initializer()
+            {
+                HttpClientInitializer = credential,
+                ApplicationName = ApplicationName,
+            });
+
+            // Parse the DOM, find our tables
+#if debug
+            Console.WriteLine("Parsing DOM for HTML Tables");
+#endif
+            List<string> correctTables = new List<string>();
+            foreach (string week in m_Schedules)
+            {
+                correctTables.Add(FindTable(week));
+            }
+#if debug
+            Console.WriteLine("Identified which Tables are the Schedule...");
+#endif
+
+            // Now we gotta parse our table for the values we want
+            List<Row> rows = new List<Row>();
+            foreach (string table in correctTables)
+            {
+                rows.AddRange(ParseTable(table));
+            }
+#if debug
+            Console.WriteLine("Parse complete...");
+#endif
+            Console.WriteLine(string.Empty);
+            Console.ForegroundColor = originalColor;
+            
+           
+            // Now that we have all the data in a parsable format
+            // we need to parse the "rows" object
+            List<WorkDay> schedule = ParseRows(rows);
+
+            // Display our results to the user.
+            DisplayResults(schedule, originalColor);
+
+            // Now let's upload it to Google Calendar
+            Console.WriteLine("Uploading to Google Calendar...");
+            retries = 3;
+            while (true)
+            {
+                try
+                {
+                    UploadResults(schedule, service, calendarId).Wait();
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    if (--retries == 0)
+                    {
+                        Console.WriteLine("We tried uploading your schedule three times and it didn't work.");
+                        Console.WriteLine("Here's a nasty error message to explain why:");
+                        Console.Write(ex.ToString());
+                    }
+                    else
+                    Console.WriteLine("Something happened with the upload, let's try again.");
+                }
+            }
+            
+            Console.WriteLine("Upload Complete, Press Enter to exit.");
+
+            //After a successful run with input, allow the user to enter "Automate" to remove all needed user input from future runs.
+            //Don't prompt the user to use this mode, since it's a hassle to stop automated runs.
+            if (automate != "Automate")
+            {
+                if ((Console.ReadLine().Equals("Automate") && (savedlogin == "Saved")))
+                {
+                    //AutomateRun(username, password);
+                    //Console.WriteLine("Alright, all future runs will require no input.");
+                    //string loginPath = Path.GetFullPath("login.txt");
+                    //Console.WriteLine("To reset your password, manually delete the file at: ");
+                    //Console.WriteLine(string.Empty);
+                    //Console.WriteLine(loginPath);
+                    //Console.WriteLine(string.Empty);
+                    //Console.WriteLine("Press Any key to exit.");
+                    //Console.ReadKey();
+                }
+            }
+        }
+
+        static public string LoadLoginCreds(ref string username, ref string password)
+        {
+            string savedlogin = string.Empty;
             string credPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.Personal);
-            credPath = Path.Combine(credPath, ".credentials");
-            string logincredPath = Path.Combine(credPath, "login.txt");
-            string entropyPath = Path.Combine(credPath, "entropy.txt");
+            string logincredPath = Path.Combine(credPath, ".credentials/login.txt");
+            string entropyPath = Path.Combine(credPath, ".credentials/entropy.txt");
             byte[] logincreds = null, entropy = null;
             string ptcreds = string.Empty;
             string[] creds;
@@ -113,7 +231,7 @@ namespace WScheduler
                 logincreds = File.ReadAllBytes(logincredPath);
                 entropy = File.ReadAllBytes(entropyPath);
             }
-            catch(FileNotFoundException)
+            catch (FileNotFoundException)
             {
                 Console.WriteLine("No Saved Login Credentials Detected.");
             }
@@ -129,125 +247,25 @@ namespace WScheduler
                         creds = ptcreds.Split('\n');
                         username = creds[0];
                         password = creds[1];
-         
+
                     }
                     else // Login creds exist but user doesn't use them.
                     {
-                        getLoginCreds();
-                        saveLoginCreds();
+                        GetLoginCreds(ref username, ref password);
+                        SaveLoginCreds(username, password, ref savedlogin);
                     }
 
                 }
                 else // Login creds don't exist
                 {
-                    getLoginCreds();
-                    saveLoginCreds();
-                } 
-            }            
-
-            // GET our schedule
-            Console.WriteLine("Getting your schedule... This could take a while...");
-            int retries = 3;
-            int errcode = 0;
-            while (retries > 0)
-            {
-
-                errcode = HTTP_GET();
-                if (errcode == 0)
-                {
-                    break;
-                }
-                else
-                {
-                    Console.WriteLine("There was a problem getting your schedule, Error Code:" + errcode);
-                    Console.WriteLine("Let's try again.");
-                }
-                retries--;
-            }
-
-            // Create Google Calendar API service.
-            var service = new CalendarService(new BaseClientService.Initializer()
-            {
-                HttpClientInitializer = credential,
-                ApplicationName = ApplicationName,
-            });
-
-            // Parse the DOM, find our tables
-#if debug
-            Console.WriteLine("Parsing DOM for HTML Tables");
-#endif
-            List<string> correctTables = new List<string>();
-            foreach (string week in m_Schedules)
-            {
-                correctTables.Add(findTable(week));
-            }
-#if debug
-            Console.WriteLine("Identified which Tables are the Schedule...");
-#endif
-
-            // Now we gotta parse our table for the values we want
-            List<Row> rows = new List<Row>();
-            foreach (string table in correctTables)
-            {
-                rows.AddRange(parseTable(table));
-            }
-#if debug
-            Console.WriteLine("Parse complete...");
-#endif
-            Console.WriteLine(string.Empty);
-            Console.ForegroundColor = originalColor;
-            
-           
-            // Now that we have all the data in a parsable format
-            // we need to parse the "rows" object
-            var schedule = parseRows(rows);
-
-            // Display our results to the user.
-            displayResults(schedule, originalColor);
-
-            // Now let's upload it to Google Calendar
-            Console.WriteLine("Uploading to Google Calendar...");
-            retries = 3;
-            while (true)
-            {
-                try
-                {
-                    uploadResults(schedule, service, calendarId).Wait();
-                    break;
-                }
-                catch (Exception)
-                {
-                    if (--retries == 0)
-                    {
-                        throw;
-                    }
-                    else
-                    Console.WriteLine("Something happened with the upload, let's try again.");
+                    GetLoginCreds(ref username, ref password);
+                    SaveLoginCreds(username, password, ref savedlogin);
                 }
             }
-            
-            Console.WriteLine("Upload Complete, Press Enter to exit.");
-
-            // After a successful run with input, allow the user to enter "Automate" to remove all needed user input from future runs.
-            // Don't prompt the user to use this mode, since it's a hassle to stop automated runs.
-            if (success != "Success")
-            {
-                if ((Console.ReadLine().Equals("Automate") && (savedLogin == "Saved")))
-                {
-                    successfulRun();
-                    Console.WriteLine("Alright, all future runs will require no input.");
-                    string loginPath = Path.GetFullPath("login.txt");
-                    Console.WriteLine("To reset your password, manually delete the file at: ");
-                    Console.WriteLine(string.Empty);
-                    Console.WriteLine(loginPath);
-                    Console.WriteLine(string.Empty);
-                    Console.WriteLine("Press Any key to exit.");
-                    Console.ReadKey();
-                }
-            }
+            return savedlogin;
         }
 
-        static public void getLoginCreds()
+        static public void GetLoginCreds(ref string username, ref string password)
         {
             Console.Write("Please Enter your username: ");
             username = Console.ReadLine();
@@ -260,7 +278,7 @@ namespace WScheduler
             Console.Write("Please Enter your password: ");
             const int ENTER = 13, BACKSP = 8, CTRLBACKSP = 127;
             int[] FILTERED = { 0, 27, 9, 10 /*, 32 space, if you care */ };
-            var pass = new Stack<char>();
+            Stack<char> pass = new Stack<char>();
             char chr = (char)0;
 
             while ((chr = System.Console.ReadKey(true).KeyChar) != ENTER)
@@ -288,6 +306,7 @@ namespace WScheduler
                     System.Console.Write("*");
                 }
             }
+            Console.WriteLine();
 
             // Popping the password off the stack will result in a reverse password,
             // So let's flip it.
@@ -297,7 +316,7 @@ namespace WScheduler
             password = new string(revArray);
         }
 
-        static public void saveLoginCreds()
+        static public void SaveLoginCreds(string username, string password, ref string savedlogin)
         {
             string credPath = System.Environment.GetFolderPath(
                     System.Environment.SpecialFolder.Personal);
@@ -318,15 +337,16 @@ namespace WScheduler
                 byte[] encryptedcreds = ProtectedData.Protect(plaintextcreds, entropy, DataProtectionScope.CurrentUser);
                 File.WriteAllBytes(logincredPath, encryptedcreds);
                 File.WriteAllBytes(entropyPath, entropy);
-                savedLogin = "Saved";
+                savedlogin = "Saved";
             }
         }
 
-        static public int HTTP_GET()
+        static public int HTTP_GET(string username, string password, string savedlogin, string automate)
         {
             var driverService = PhantomJSDriverService.CreateDefaultService();
             driverService.HideCommandPromptWindow = true; // Disables verbose phantomjs output
             IWebDriver driver = new PhantomJSDriver(driverService);
+
             Console.WriteLine("Logging into Office 365.");
             driver.Navigate().GoToUrl("https://wegmans.sharepoint.com/resources/Pages/LaborPro.aspx");
             if (driver.Title.ToString() == "Sign in to Office 365")
@@ -336,19 +356,16 @@ namespace WScheduler
                 IWebElement rememberme = driver.FindElement(By.XPath("//*[@id='cred_keep_me_signed_in_checkbox']"));
                 rememberme.Click();
             }
-            Console.WriteLine("Logging into Sharepoint.");
+
             WebDriverWait wait = new WebDriverWait(driver, TimeSpan.FromSeconds(30));
             try { wait.Until((d) => { return (d.Title.ToString().Contains("Sign In") || d.Title.ToString().Contains("My Schedule")); }); } // Sometimes it skips the second login page.
             catch (WebDriverTimeoutException)
             {
                 Console.WriteLine("Did not recieve an appropriate response from the Sharepoint server. The connection most likely timed out.");
-                if (success != "Success")
-                {
-                    Console.ReadKey();
-                }
                 driver.Quit();
                 return 1;
             }
+            Console.WriteLine("Logging into Sharepoint.");
             
             if (driver.Title.ToString() == "Sign In")
             {
@@ -356,10 +373,6 @@ namespace WScheduler
                 catch (Exception)
                 {
                     Console.WriteLine("Password input box did not load correctly.");
-                    if (success != "Success")
-                    {
-                        Console.ReadKey();
-                    }
                     driver.Quit();
                     return 2;
                 }
@@ -367,14 +380,11 @@ namespace WScheduler
                 passwordentry.SendKeys(password);
                 passwordentry.Submit();
             }
+
             try { wait.Until((d) => { return (d.Title.ToString().Contains("Sign In") || d.Title.ToString().Contains("My Schedule")); }); } // Checks to see if the password was incorrect.
             catch (WebDriverTimeoutException)
             {
                 Console.WriteLine("Did not recieve an appropriate response from the Sharepoint server. The connection most likely timed out.");
-                if (success != "Success")
-                {
-                    Console.ReadKey();
-                }
                 driver.Quit();
                 return 3;
             }
@@ -382,7 +392,7 @@ namespace WScheduler
             {
 
                 IWebElement error = driver.FindElement(By.XPath("//*[@id='error']"));
-                var errorString = error.Text.ToString();
+                string errorString = error.Text.ToString();
                 if (errorString.Contains("Incorrect user ID or password"))
                 {
                     while (driver.Title.ToString() == "Sign In")
@@ -392,19 +402,19 @@ namespace WScheduler
                         usernameentry.Clear();
                         passwordentry.Clear();
                         Console.WriteLine("You seem to have entered the wrong username or password.");
-                        getLoginCreds();
+                        GetLoginCreds(ref username, ref password);
+                        Console.WriteLine("Trying again...");
                         usernameentry.SendKeys(username);
                         passwordentry.SendKeys(password);
                         passwordentry.Submit();
                     }
-                    saveLoginCreds();
+                    SaveLoginCreds(username, password, ref savedlogin);
                 }
                 else
                 {
                     Console.WriteLine("An unexpected error has occured with the webpage.");
                     Console.WriteLine(errorString);
                     driver.Quit();
-                    Console.ReadKey();
                     return 4;
                 }
             }
@@ -423,10 +433,6 @@ namespace WScheduler
                     if (retries <= 0)
                     {
                         driver.Quit();
-                        if (success != "Success")
-                        {
-                            Console.ReadKey();
-                        }
                         return 5;
                     }
 
@@ -440,10 +446,6 @@ namespace WScheduler
                 Console.WriteLine("LaborPro SSO Link was not generated properly.");
                 Console.WriteLine("You encountered the classic \"SadPage\" error. We need to try logging in again...");
                 driver.Quit();
-                if (success != "Success")
-                {
-                    Console.ReadKey();
-                }
                 return 6;
             }
             
@@ -467,11 +469,6 @@ namespace WScheduler
             catch (WebDriverTimeoutException)
             {
                 Console.WriteLine("Did not properly switch to LabroPro Window.");
-                if (success != "Success")
-                {
-                    Console.ReadKey();
-                }
-                driver.Quit();
                 return 7;
             }
             m_Schedules.Add(driver.PageSource.ToString());
@@ -486,7 +483,7 @@ namespace WScheduler
             return 0;
         }
 
-        static public UserCredential setupGoogleCreds()
+        static public UserCredential SetupGoogleCreds()
         {
             UserCredential credential;
             using (var stream =
@@ -504,18 +501,18 @@ namespace WScheduler
             }
         }
 
-        static public string findTable(string file)
+        static public string FindTable(string file)
         {
-            var endTable = "</table>";
-            var startTable = "<table";
+            string endTable = "</table>";
+            string startTable = "<table";
             int index = 0;
             m_Tables.Clear();
 
             // Parse the DOM, find our tables
             while ((index = file.IndexOf(startTable, index + 1, StringComparison.OrdinalIgnoreCase)) != -1)
             {
-                var tableContentEndIndex = file.IndexOf(endTable, index, StringComparison.OrdinalIgnoreCase);
-                var tableContent = file.Substring(index, tableContentEndIndex - index + endTable.Length);
+                int tableContentEndIndex = file.IndexOf(endTable, index, StringComparison.OrdinalIgnoreCase);
+                string tableContent = file.Substring(index, tableContentEndIndex - index + endTable.Length);
 
 #if debug
                 Console.WriteLine("Found a table DOM element!");
@@ -525,7 +522,7 @@ namespace WScheduler
             }
 
             // Identify the table that's actually relevant to us
-            var keyword = "Schedule Times:";
+            string keyword = "Schedule Times:";
             var oneWeWantList = m_Tables.Where(s => s.Contains(keyword));
 
             if (oneWeWantList.Count() > 1)
@@ -543,7 +540,7 @@ namespace WScheduler
             return correctTable;
         }
 
-        static public List<Row> parseTable(string correctTable)
+        static public List<Row> ParseTable(string correctTable)
         {
             const string rowStart = "<tr";
             const string cellStart = "<td";
@@ -552,28 +549,28 @@ namespace WScheduler
 
             var rows = new List<Row>();
 
-            var index = 0;
+            int index = 0;
             while ((index = correctTable.IndexOf(rowStart, index + 1, StringComparison.OrdinalIgnoreCase)) != -1)
             {
-                var rowContentEndIndex = correctTable.IndexOf(rowEnd, index);
-                var rowContent = correctTable.Substring(index, rowContentEndIndex - index + rowEnd.Length);
+                int rowContentEndIndex = correctTable.IndexOf(rowEnd, index);
+                String rowContent = correctTable.Substring(index, rowContentEndIndex - index + rowEnd.Length);
                 var row = new Row();
 
 #if debug
                 Console.WriteLine("Found a row within the table...");
 #endif
 
-                var index2 = 0;
+                int index2 = 0;
                 while ((index2 = rowContent.IndexOf(cellStart, index2 + 1, StringComparison.OrdinalIgnoreCase)) != -1)
                 {
-                    var cellContentEndIndex = rowContent.IndexOf(cellEnd, index2);
-                    var cellContent = rowContent.Substring(index2, cellContentEndIndex - index2 + cellEnd.Length);
+                    int cellContentEndIndex = rowContent.IndexOf(cellEnd, index2);
+                    String cellContent = rowContent.Substring(index2, cellContentEndIndex - index2 + cellEnd.Length);
 
                     // We have to parse the cell html for the value
                     // we just want the value between ...>HERE<...
-                    var startOpen = cellContent.IndexOf(">");
-                    var endOpen = cellContent.IndexOf("<", cellStart.Length); // start past the <td> part
-                    var actualValue = cellContent
+                    int startOpen = cellContent.IndexOf(">");
+                    int endOpen = cellContent.IndexOf("<", cellStart.Length); // start past the <td> part
+                    String actualValue = cellContent
                         .Substring(startOpen + 1, endOpen - startOpen - 1)
                         .Replace("\n", string.Empty)
                         .Replace("\r", string.Empty)
@@ -597,23 +594,23 @@ namespace WScheduler
             return rows;
         }
 
-        static public List<WorkDay> parseRows(List<Row> rows)
+        static public List<WorkDay> ParseRows(List<Row> rows)
         {
             var schedule = new List<WorkDay>();
             for (int i = 0; i < 3; i++)
             {
-                var dateRow = rows[1 + (i * 8)]; // First row is empty, then adds a week each iteration.
-                var scheduleHoursRow = rows[2 + (i * 8)];
-                var activityRow = rows[3 + (i * 8)];
-                var locationRow = rows[4 + (i * 8)];
-                var scheduleTimesRow = rows[5 + (i * 8)];
-                var commentsRow = rows[6 + (i * 8)];
+                Row dateRow = rows[1 + (i * 8)]; // First row is empty, then adds a week each iteration.
+                Row scheduleHoursRow = rows[2 + (i * 8)];
+                Row activityRow = rows[3 + (i * 8)];
+                Row locationRow = rows[4 + (i * 8)];
+                Row scheduleTimesRow = rows[5 + (i * 8)];
+                Row commentsRow = rows[6 + (i * 8)];
 
                 int dayIndex = 1; // 0 is column names
                 while (true)
                 {
                     var workDay = new WorkDay();
-                    var dateString = dateRow.Cells[dayIndex].Value;
+                    String dateString = dateRow.Cells[dayIndex].Value;
 
                     // Get the day of the week
                     workDay.Day = WorkDay.Get(dateString);
@@ -624,7 +621,7 @@ namespace WScheduler
 
                     // split the string "Tue 6/23"
                     // and use the second part ['Tue', '6/23']
-                    var datePart = dateString.Split(' ')[1];
+                    String datePart = dateString.Split(' ')[1];
                     workDay.Date = DateTime.Parse(datePart);
 
                     workDay.Hours = float.Parse(scheduleHoursRow.Cells[dayIndex].Value.Replace(":", "."));
@@ -632,8 +629,8 @@ namespace WScheduler
                     workDay.Comments = commentsRow.Cells[dayIndex].Value;
                     workDay.Location = locationRow.Cells[dayIndex].Value;
 
-                    var timeSpanPart = scheduleTimesRow.Cells[dayIndex].Value;
-                    var times = timeSpanPart.Split('-'); // split '2:00 AM-8:00 PM' on the '-'
+                    String timeSpanPart = scheduleTimesRow.Cells[dayIndex].Value;
+                    String[] times = timeSpanPart.Split('-'); // split '2:00 AM-8:00 PM' on the '-'
 
                     workDay.StartTime = times[0];
                     workDay.EndTime = times.Length == 1 ? times[0] : times[1];
@@ -650,9 +647,9 @@ namespace WScheduler
             return schedule;
         }
 
-        static public void displayResults(List<WorkDay> schedule, ConsoleColor originalColor)
+        static public void DisplayResults(List<WorkDay> schedule, ConsoleColor originalColor)
         {
-            foreach (var day in schedule)
+            foreach (WorkDay day in schedule)
             {
                 if (day.Hours == 0)
                 {
@@ -675,9 +672,9 @@ namespace WScheduler
             }
         }
 
-        static public async Task uploadResults(List<WorkDay> schedule, CalendarService service, string calendarId)
+        static public async Task UploadResults(List<WorkDay> schedule, CalendarService service, string calendarId)
         {
-            foreach (var day in schedule)
+            foreach (WorkDay day in schedule)
             {
                 var request = new BatchRequest(service);
                 // Setup request for current events.
@@ -692,11 +689,11 @@ namespace WScheduler
                 // setup a batch request to delete them.
                 // Not the best implementation, but takes care of duplicates without tracking
                 // eventIds to update existing events.
-                var workevent = "Wegmans: ";
+                String workevent = "Wegmans: ";
                 Events eventslist = listrequest.Execute();
                 if (eventslist.Items != null && eventslist.Items.Count > 0)
                 {
-                    foreach (var eventItem in eventslist.Items)
+                    foreach (Event eventItem in eventslist.Items)
                     {
                         DateTime eventcontainer = (DateTime)eventItem.Start.DateTime; // Typecast to use ToShortDateString() method for comparison.
                         if (((eventcontainer.ToShortDateString()) == (day.Date.ToShortDateString())) && (eventItem.Summary.Contains(workevent)))
@@ -745,10 +742,10 @@ namespace WScheduler
                 await request.ExecuteAsync();
             }
         }
-        
-        static public void successfulRun()
+
+        static public void AutomateRun(string username, string password) // todo: update to proper credential storage.
         {
-            string creds = "Success\n" + username + "\n" + password;
+            string creds = "Automate\n" + username + "\n" + password;
             File.WriteAllText("login.txt", creds);
         }
 
