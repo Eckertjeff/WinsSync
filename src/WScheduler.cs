@@ -258,7 +258,43 @@ namespace WScheduler
                 username = Console.ReadLine();
             }
             Console.Write("Please Enter your password: ");
-            password = Console.ReadLine();
+            const int ENTER = 13, BACKSP = 8, CTRLBACKSP = 127;
+            int[] FILTERED = { 0, 27, 9, 10 /*, 32 space, if you care */ };
+            var pass = new Stack<char>();
+            char chr = (char)0;
+
+            while ((chr = System.Console.ReadKey(true).KeyChar) != ENTER)
+            {
+                if (chr == BACKSP)
+                {
+                    if (pass.Count > 0)
+                    {
+                        System.Console.Write("\b \b");
+                        pass.Pop();
+                    }
+                }
+                else if (chr == CTRLBACKSP)
+                {
+                    while (pass.Count > 0)
+                    {
+                        System.Console.Write("\b \b");
+                        pass.Pop();
+                    }
+                }
+                else if (FILTERED.Count(x => chr == x) > 0) { }
+                else
+                {
+                    pass.Push((char)chr);
+                    System.Console.Write("*");
+                }
+            }
+
+            // Popping the password off the stack will result in a reverse password,
+            // So let's flip it.
+            string revpassword = string.Join("", pass.ToArray());
+            char[] revArray = revpassword.ToCharArray();
+            Array.Reverse(revArray);
+            password = new string(revArray);
         }
 
         static public void saveLoginCreds()
