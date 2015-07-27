@@ -1,21 +1,24 @@
 ﻿//#define debug
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.IO;
+using System.Threading;
+using System.Net.Http;
+using System.Security.Cryptography;
+
 using Google.Apis.Auth.OAuth2;
 using Google.Apis.Calendar.v3;
 using Google.Apis.Calendar.v3.Data;
 using Google.Apis.Services;
 using Google.Apis.Util.Store;
 using Google.Apis.Requests;
-using System.Threading;
-using System.Net.Http;
+
 using OpenQA.Selenium;
 using OpenQA.Selenium.Support.UI;
-using System.Collections.ObjectModel;
 using OpenQA.Selenium.PhantomJS;
 
 namespace WScheduler
@@ -96,10 +99,13 @@ namespace WScheduler
             UserCredential credential = setupGoogleCreds();    
            
             // Get our login info from a file, or the user.
+            string credPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.Personal);
+            credPath = Path.Combine(credPath, ".credentials");
+            string logincredPath = Path.Combine(credPath, ".credentials/login.txt");
             StreamReader logincreds = null;
             try // Checks the logincreds file to see if the last run was successful,
             {   // and if no input was requested for future runs.
-                logincreds = new StreamReader("login.txt");
+                logincreds = new StreamReader(logincredPath);
             }
             catch (FileNotFoundException)
             {
@@ -116,7 +122,7 @@ namespace WScheduler
 
             try
             {
-                logincreds = new StreamReader("login.txt");
+                logincreds = new StreamReader(logincredPath);
             }
             catch (FileNotFoundException)
             {
@@ -128,10 +134,12 @@ namespace WScheduler
                 {
                     if (success == "Success")
                     {
+                       
                         success = logincreds.ReadLine();
                         username = logincreds.ReadLine();
                         password = logincreds.ReadLine();
                         logincreds.Close();
+                        
                     }
                     else
                     {
@@ -276,11 +284,15 @@ namespace WScheduler
 
         static public void saveLoginCreds()
         {
+            string credPath = System.Environment.GetFolderPath(
+                    System.Environment.SpecialFolder.Personal);
+            credPath = Path.Combine(credPath, ".credentials/login.txt");
             Console.Write("Would you like to save your login info? Y/N: ");
+
             if (Console.ReadLine().Equals("y", StringComparison.OrdinalIgnoreCase))
             {
-                string creds = username + "\n" + password;
-                File.WriteAllText("login.txt", creds);
+                string logincreds = username + "\n" + password;
+                File.WriteAllText(credPath, logincreds);
                 savedLogin = "Saved";
             }
         }
@@ -300,7 +312,7 @@ namespace WScheduler
                 rememberme.Click();
             }
             Console.WriteLine("Logging into Sharepoint.");
-            WebDriverWait wait = new WebDriverWait(driver, TimeSpan.FromSeconds(60));
+            WebDriverWait wait = new WebDriverWait(driver, TimeSpan.FromSeconds(30));
             try { wait.Until((d) => { return (d.Title.ToString().Contains("Sign In") || d.Title.ToString().Contains("My Schedule")); }); } // Sometimes it skips the second login page.
             catch (WebDriverTimeoutException)
             {
@@ -312,7 +324,7 @@ namespace WScheduler
                 driver.Quit();
                 return 1;
             }
-
+            
             if (driver.Title.ToString() == "Sign In")
             {
                 try { wait.Until((d) => { return (d.FindElement(By.XPath("//*[@id='passwordInput']"))); }); }
@@ -373,29 +385,43 @@ namespace WScheduler
             }
 
             Console.WriteLine("Waiting for LaborPro...");
-            try { wait.Until((d) => { return (d.SwitchTo().Frame(0)); }); } // Waits for the inline frame to load.
-            catch (WebDriverTimeoutException)
+            int retries = 2;
+            while (true) // Retry because this error can be solved by a simple page reload.
             {
-                Console.WriteLine("LaborPro link's inline frame was not generated properly.");
-                driver.Quit();
-                if (success != "Success")
+                try { wait.Until((d) => { return (d.SwitchTo().Frame(0)); }); break; } // Waits for the inline frame to load.
+                catch (WebDriverTimeoutException)
                 {
-                    Console.ReadKey();
+                    Console.WriteLine("LaborPro link's inline frame was not generated properly.");
+                    Console.WriteLine("Reloading the page...");
+                    driver.Navigate().Refresh();
+                    retries--;
+                    if (retries <= 0)
+                    {
+                        driver.Quit();
+                        if (success != "Success")
+                        {
+                            Console.ReadKey();
+                        }
+                        return 5;
+                    }
+
                 }
-                return 5;
             }
+            
             string BaseWindow = driver.CurrentWindowHandle;
             try { wait.Until((d) => { return (d.FindElement(By.XPath("/html/body/a"))); }); } // Waits until javascript generates the SSO link.
             catch (Exception)
             {
                 Console.WriteLine("LaborPro SSO Link was not generated properly.");
+                Console.WriteLine("You encountered the classic \"SadPage\" error. We need to try logging in again...");
+                driver.Quit();
                 if (success != "Success")
                 {
                     Console.ReadKey();
                 }
-                driver.Quit();
                 return 6;
             }
+            
             IWebElement accessschedule = driver.FindElement(By.XPath("/html/body/a"));
             accessschedule.Click();
             string popupHandle = string.Empty;
@@ -448,7 +474,7 @@ namespace WScheduler
                 credential = GoogleWebAuthorizationBroker.AuthorizeAsync(
                     GoogleClientSecrets.Load(stream).Secrets, Scopes, "user", CancellationToken.None,
                     new FileDataStore(credPath, true)).Result;
-                Console.WriteLine("Google Credentials file saved to: " + credPath);
+                Console.WriteLine("Credentials files saved to: " + credPath);
                 return credential;
             }
         }
