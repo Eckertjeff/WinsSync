@@ -21,6 +21,7 @@ using OpenQA.Selenium;
 using OpenQA.Selenium.Support.UI;
 using OpenQA.Selenium.PhantomJS;
 
+
 namespace WScheduler
 {
     class Cell { public string Value;}
@@ -87,7 +88,8 @@ namespace WScheduler
         static List<string> m_Schedules = new List<string>();
         static string[] Scopes = { CalendarService.Scope.Calendar };
         static string ApplicationName = "WScheduler";
-        static string username = string.Empty, password = string.Empty, success = string.Empty, savedLogin = string.Empty;
+        static string username = string.Empty, password = string.Empty;
+        static string success = string.Empty, savedLogin = string.Empty;
 
         static void Main(string[] args)
         {
@@ -101,30 +103,17 @@ namespace WScheduler
             // Get our login info from a file, or the user.
             string credPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.Personal);
             credPath = Path.Combine(credPath, ".credentials");
-            string logincredPath = Path.Combine(credPath, ".credentials/login.txt");
-            StreamReader logincreds = null;
-            try // Checks the logincreds file to see if the last run was successful,
-            {   // and if no input was requested for future runs.
-                logincreds = new StreamReader(logincredPath);
-            }
-            catch (FileNotFoundException)
-            {
-                // don't do anything, if this is the case we'll inform the user in a second.
-            }
-            finally
-            {
-                if (logincreds != null)
-                {
-                    success = logincreds.ReadLine();
-                    logincreds.Close();
-                }
-            }
-
+            string logincredPath = Path.Combine(credPath, "login.txt");
+            string entropyPath = Path.Combine(credPath, "entropy.txt");
+            byte[] logincreds = null, entropy = null;
+            string ptcreds = string.Empty;
+            string[] creds;
             try
             {
-                logincreds = new StreamReader(logincredPath);
+                logincreds = File.ReadAllBytes(logincredPath);
+                entropy = File.ReadAllBytes(entropyPath);
             }
-            catch (FileNotFoundException)
+            catch(FileNotFoundException)
             {
                 Console.WriteLine("No Saved Login Credentials Detected.");
             }
@@ -132,39 +121,29 @@ namespace WScheduler
             {
                 if (logincreds != null)
                 {
-                    if (success == "Success")
+                    Console.Write("Would you like to use your saved login info? Y/N: ");
+                    if (Console.ReadLine().Equals("y", StringComparison.OrdinalIgnoreCase)) // Login creds exist and are used.
                     {
-                       
-                        success = logincreds.ReadLine();
-                        username = logincreds.ReadLine();
-                        password = logincreds.ReadLine();
-                        logincreds.Close();
-                        
+                        byte[] credbytes = ProtectedData.Unprotect(logincreds, entropy, DataProtectionScope.CurrentUser);
+                        ptcreds = Encoding.UTF8.GetString(credbytes);
+                        creds = ptcreds.Split('\n');
+                        username = creds[0];
+                        password = creds[1];
+         
                     }
-                    else
+                    else // Login creds exist but user doesn't use them.
                     {
-                        Console.Write("Would you like to use your saved login info? Y/N: ");
-                        if (Console.ReadLine().Equals("y", StringComparison.OrdinalIgnoreCase)) // Login creds exist and are used.
-                        {
-                            username = logincreds.ReadLine();
-                            password = logincreds.ReadLine();
-                            logincreds.Close();
-                        }
-                        else // Login creds exist but user doesn't use them.
-                        {
-                            logincreds.Close();
-                            getLoginCreds();
-                            saveLoginCreds();
-                        }
+                        getLoginCreds();
+                        saveLoginCreds();
                     }
+
                 }
                 else // Login creds don't exist
                 {
                     getLoginCreds();
                     saveLoginCreds();
-                }
-            }
-            
+                } 
+            }            
 
             // GET our schedule
             Console.WriteLine("Getting your schedule... This could take a while...");
@@ -286,13 +265,23 @@ namespace WScheduler
         {
             string credPath = System.Environment.GetFolderPath(
                     System.Environment.SpecialFolder.Personal);
-            credPath = Path.Combine(credPath, ".credentials/login.txt");
+            string logincredPath = Path.Combine(credPath, ".credentials/login.txt");
+            string entropyPath = Path.Combine(credPath, ".credentials/entropy.txt");
             Console.Write("Would you like to save your login info? Y/N: ");
 
             if (Console.ReadLine().Equals("y", StringComparison.OrdinalIgnoreCase))
             {
                 string logincreds = username + "\n" + password;
-                File.WriteAllText(credPath, logincreds);
+                byte[] plaintextcreds = Encoding.UTF8.GetBytes(logincreds);
+                byte[] entropy = new byte[20];
+                using (RNGCryptoServiceProvider rng = new RNGCryptoServiceProvider())
+                {
+                    rng.GetBytes(entropy);
+                }
+
+                byte[] encryptedcreds = ProtectedData.Protect(plaintextcreds, entropy, DataProtectionScope.CurrentUser);
+                File.WriteAllBytes(logincredPath, encryptedcreds);
+                File.WriteAllBytes(entropyPath, entropy);
                 savedLogin = "Saved";
             }
         }
