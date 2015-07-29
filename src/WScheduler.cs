@@ -84,8 +84,6 @@ namespace WScheduler
 
     class Program
     {
-        static List<string> m_Tables = new List<string>();
-        static List<string> m_Schedules = new List<string>();
         static string[] Scopes = { CalendarService.Scope.Calendar };
         static string ApplicationName = "WScheduler";
 
@@ -105,11 +103,12 @@ namespace WScheduler
 
             // GET our schedule
             Console.WriteLine("Getting your schedule... This could take a while...");
+            List<string> m_Schedules = new List<string>();
             int retries = 3;
             int errcode = 0;
             while (retries > 0)
             {
-                errcode = HTTP_GET(username, password, automate, savedlogin);
+                errcode = HTTP_GET(username, password, automate, savedlogin, ref m_Schedules);
                 if (errcode == 0)
                 {
                     break;
@@ -341,7 +340,7 @@ namespace WScheduler
             }
         }
 
-        static public int HTTP_GET(string username, string password, string savedlogin, string automate)
+        static public int HTTP_GET(string username, string password, string savedlogin, string automate, ref List<string> m_Schedules)
         {
             var driverService = PhantomJSDriverService.CreateDefaultService();
             driverService.HideCommandPromptWindow = true; // Disables verbose phantomjs output
@@ -506,7 +505,7 @@ namespace WScheduler
             string endTable = "</table>";
             string startTable = "<table";
             int index = 0;
-            m_Tables.Clear();
+            List<string> m_Tables = new List<string>();
 
             // Parse the DOM, find our tables
             while ((index = file.IndexOf(startTable, index + 1, StringComparison.OrdinalIgnoreCase)) != -1)
