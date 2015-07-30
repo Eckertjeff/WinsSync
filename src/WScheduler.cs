@@ -20,6 +20,7 @@ using Google.Apis.Requests;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Support.UI;
 using OpenQA.Selenium.PhantomJS;
+using OpenQA.Selenium.Firefox;
 
 
 namespace WScheduler
@@ -108,7 +109,7 @@ namespace WScheduler
             int errcode = 0;
             while (retries > 0)
             {
-                errcode = HTTP_GET(username, password, automate, savedlogin, ref m_Schedules);
+                errcode = HTTP_GET(username, password, automate, savedlogin, m_Schedules);
                 if (errcode == 0)
                 {
                     break;
@@ -340,11 +341,12 @@ namespace WScheduler
             }
         }
 
-        static public int HTTP_GET(string username, string password, string savedlogin, string automate, ref List<string> m_Schedules)
+        static public int HTTP_GET(string username, string password, string savedlogin, string automate, List<string> m_Schedules)
         {
             var driverService = PhantomJSDriverService.CreateDefaultService();
             driverService.HideCommandPromptWindow = true; // Disables verbose phantomjs output
             IWebDriver driver = new PhantomJSDriver(driverService);
+            //IWebDriver driver = new FirefoxDriver(); // Debug with firefox.
 
             Console.WriteLine("Logging into Office 365.");
             driver.Navigate().GoToUrl("https://wegmans.sharepoint.com/resources/Pages/LaborPro.aspx");
