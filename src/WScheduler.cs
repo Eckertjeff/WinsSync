@@ -4,11 +4,11 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using System.IO;
 using System.Threading;
-using System.Net.Http;
 using System.Security.Cryptography;
+using System.Reflection;
+using Microsoft.Win32.TaskScheduler;
 
 using Google.Apis.Auth.OAuth2;
 using Google.Apis.Calendar.v3;
@@ -20,13 +20,13 @@ using Google.Apis.Requests;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Support.UI;
 using OpenQA.Selenium.PhantomJS;
-using OpenQA.Selenium.Firefox;
+//using OpenQA.Selenium.Firefox;
 
 
 namespace WScheduler
 {
-    class Cell { public string Value;}
-    class Row { public List<Cell> Cells = new List<Cell>();}
+    class Cell { public string Value; }
+    class Row { public List<Cell> Cells = new List<Cell>(); }
 
     /// <summary>
     /// Uses Selenium WebDriver and PhantomJS to get the user's work schedule,
@@ -95,12 +95,22 @@ namespace WScheduler
             Console.ForegroundColor = ConsoleColor.Cyan;
 
             // Setup our Google credentials.
-            UserCredential credential = SetupGoogleCreds();    
-           
+            UserCredential credential = SetupGoogleCreds();
+
             // Get our login info from a file, or the user.
             string username = string.Empty, password = string.Empty;
-            string automate = string.Empty, savedlogin = string.Empty;
-            savedlogin = LoadLoginCreds(ref username, ref password); 
+            string automate = string.Empty;
+            bool savedlogin = false;
+            try
+            {
+                savedlogin = LoadLoginCreds(ref username, ref password, ref automate);
+            }
+            catch (CryptographicException)
+            {
+                DeleteLoginCreds();
+                LoadLoginCreds(ref username, ref password, ref automate);
+            }
+
 
             // GET our schedule
             Console.WriteLine("Getting your schedule... This could take a while...");
@@ -109,7 +119,7 @@ namespace WScheduler
             int errcode = 0;
             while (retries > 0)
             {
-                errcode = HTTP_GET(username, password, automate, savedlogin, m_Schedules);
+                errcode = HTTP_GET(username, password, savedlogin, automate, m_Schedules);
                 if (errcode == 0)
                 {
                     break;
@@ -124,7 +134,7 @@ namespace WScheduler
                 {
                     Console.WriteLine("We tried getting your schedule three times and it didn't work.");
                     Console.WriteLine("Something must be up with your connection to the server.");
-                    Console.WriteLine("Please check your connection and try again.");
+                    Console.WriteLine("Please check your connection and try again. Press any key to quit.");
                     if (automate != "Automate")
                     {
                         Console.ReadKey();
@@ -202,24 +212,24 @@ namespace WScheduler
             //Don't prompt the user to use this mode, since it's a hassle to stop automated runs.
             if (automate != "Automate")
             {
-                if ((Console.ReadLine().Equals("Automate") && (savedlogin == "Saved")))
+                if ((Console.ReadLine().Equals("Automate") && (savedlogin == true)))
                 {
-                    //AutomateRun(username, password);
-                    //Console.WriteLine("Alright, all future runs will require no input.");
-                    //string loginPath = Path.GetFullPath("login.txt");
-                    //Console.WriteLine("To reset your password, manually delete the file at: ");
-                    //Console.WriteLine(string.Empty);
-                    //Console.WriteLine(loginPath);
-                    //Console.WriteLine(string.Empty);
-                    //Console.WriteLine("Press Any key to exit.");
-                    //Console.ReadKey();
+                    SaveLoginCreds(username, password, ref savedlogin, "Automate");
+                    AutomateRun();
+                    Console.WriteLine("Alright, all future runs will require no input.");
+                    Console.WriteLine("To reset automation, manually delete the files at: ");
+                    Console.WriteLine(string.Empty);
+                    Console.WriteLine(Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.Personal), ".credentials"));
+                    Console.WriteLine(string.Empty);
+                    Console.WriteLine("Press Any key to exit.");
+                    Console.ReadKey();
                 }
             }
         }
 
-        static public string LoadLoginCreds(ref string username, ref string password)
+        static public bool LoadLoginCreds(ref string username, ref string password, ref string automate)
         {
-            string savedlogin = string.Empty;
+            bool savedlogin = false;
             string credPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.Personal);
             string logincredPath = Path.Combine(credPath, ".credentials/login.txt");
             string entropyPath = Path.Combine(credPath, ".credentials/entropy.txt");
@@ -231,7 +241,7 @@ namespace WScheduler
                 logincreds = File.ReadAllBytes(logincredPath);
                 entropy = File.ReadAllBytes(entropyPath);
             }
-            catch (FileNotFoundException)
+            catch (Exception)
             {
                 Console.WriteLine("No Saved Login Credentials Detected.");
             }
@@ -239,22 +249,33 @@ namespace WScheduler
             {
                 if (logincreds != null)
                 {
-                    Console.Write("Would you like to use your saved login info? Y/N: ");
-                    if (Console.ReadLine().Equals("y", StringComparison.OrdinalIgnoreCase)) // Login creds exist and are used.
+                    byte[] credbytes = ProtectedData.Unprotect(logincreds, entropy, DataProtectionScope.CurrentUser);
+                    ptcreds = Encoding.UTF8.GetString(credbytes);
+                    creds = ptcreds.Split('\n');
+                    username = creds[0];
+                    password = creds[1];
+                    savedlogin = true;
+                    try
                     {
-                        byte[] credbytes = ProtectedData.Unprotect(logincreds, entropy, DataProtectionScope.CurrentUser);
-                        ptcreds = Encoding.UTF8.GetString(credbytes);
-                        creds = ptcreds.Split('\n');
-                        username = creds[0];
-                        password = creds[1];
-
+                        if (creds[2] == "Automate")
+                        {
+                            automate = creds[2];
+                        }
                     }
-                    else // Login creds exist but user doesn't use them.
+                    catch (IndexOutOfRangeException)
                     {
-                        GetLoginCreds(ref username, ref password);
-                        SaveLoginCreds(username, password, ref savedlogin);
+                        // creds[2] doesn't exist, so it can't possibly hold "Automate".
                     }
-
+                    if (automate != "Automate")
+                    {
+                        RemoveAutomationTask(); // Cleanup automation task if user credentials were reset.
+                        Console.Write("Would you like to use your saved login info? Y/N: ");
+                        if (!Console.ReadLine().Equals("y", StringComparison.OrdinalIgnoreCase)) // Login creds but are not used.
+                        {
+                            GetLoginCreds(ref username, ref password);
+                            SaveLoginCreds(username, password, ref savedlogin);
+                        }
+                    }
                 }
                 else // Login creds don't exist
                 {
@@ -272,7 +293,7 @@ namespace WScheduler
             while ((username.Contains("@wegmans.com") || username.Contains("@Wegmans.com")) == false)
             {
                 Console.WriteLine("I don't think your username is correct...");
-                Console.Write("Please Enter your username@wegmans.com: ");
+                Console.Write("It's something like someone@example.com: ");
                 username = Console.ReadLine();
             }
             Console.Write("Please Enter your password: ");
@@ -316,17 +337,15 @@ namespace WScheduler
             password = new string(revArray);
         }
 
-        static public void SaveLoginCreds(string username, string password, ref string savedlogin)
+        static public void SaveLoginCreds(string username, string password, ref bool savedlogin, string automate = "")
         {
-            string credPath = System.Environment.GetFolderPath(
-                    System.Environment.SpecialFolder.Personal);
+            string credPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.Personal);
             string logincredPath = Path.Combine(credPath, ".credentials/login.txt");
             string entropyPath = Path.Combine(credPath, ".credentials/entropy.txt");
-            Console.Write("Would you like to save your login info? Y/N: ");
-
-            if (Console.ReadLine().Equals("y", StringComparison.OrdinalIgnoreCase))
+            string logincreds = string.Empty;
+            if (automate == "Automate")
             {
-                string logincreds = username + "\n" + password;
+                logincreds = username + "\n" + password + "\n" + automate;
                 byte[] plaintextcreds = Encoding.UTF8.GetBytes(logincreds);
                 byte[] entropy = new byte[20];
                 using (RNGCryptoServiceProvider rng = new RNGCryptoServiceProvider())
@@ -337,11 +356,40 @@ namespace WScheduler
                 byte[] encryptedcreds = ProtectedData.Protect(plaintextcreds, entropy, DataProtectionScope.CurrentUser);
                 File.WriteAllBytes(logincredPath, encryptedcreds);
                 File.WriteAllBytes(entropyPath, entropy);
-                savedlogin = "Saved";
+                savedlogin = true;
+            }
+            else
+            {
+                Console.Write("Would you like to save your login info? Y/N: ");
+                if (Console.ReadLine().Equals("y", StringComparison.OrdinalIgnoreCase))
+                {
+                    logincreds = username + "\n" + password;
+                    byte[] plaintextcreds = Encoding.UTF8.GetBytes(logincreds);
+                    byte[] entropy = new byte[20];
+                    using (RNGCryptoServiceProvider rng = new RNGCryptoServiceProvider())
+                    {
+                        rng.GetBytes(entropy);
+                    }
+
+                    byte[] encryptedcreds = ProtectedData.Protect(plaintextcreds, entropy, DataProtectionScope.CurrentUser);
+                    File.WriteAllBytes(logincredPath, encryptedcreds);
+                    File.WriteAllBytes(entropyPath, entropy);
+                    savedlogin = true;
+                }
             }
         }
 
-        static public int HTTP_GET(string username, string password, string savedlogin, string automate, List<string> m_Schedules)
+        static public void DeleteLoginCreds()
+        {
+            Console.WriteLine("Corrupted login credentials detected, removing them now.");
+            string credPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.Personal);
+            string logincredPath = Path.Combine(credPath, ".credentials/login.txt");
+            string entropyPath = Path.Combine(credPath, ".credentials/entropy.txt");
+            File.Delete(logincredPath);
+            File.Delete(entropyPath);
+        }
+
+        static public int HTTP_GET(string username, string password, bool savedlogin, string automate, List<string> m_Schedules)
         {
             var driverService = PhantomJSDriverService.CreateDefaultService();
             driverService.HideCommandPromptWindow = true; // Disables verbose phantomjs output
@@ -487,8 +535,10 @@ namespace WScheduler
         static public UserCredential SetupGoogleCreds()
         {
             UserCredential credential;
+            // Getting the full path of client_secret is required for running with Windows Task Scheduler.
+            string secretpath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) + "\\client_secret.json";
             using (var stream =
-                new FileStream("client_secret.json", FileMode.Open, FileAccess.Read))
+                new FileStream(secretpath, FileMode.Open, FileAccess.Read))
             {
                 string credPath = System.Environment.GetFolderPath(
                     System.Environment.SpecialFolder.Personal);
@@ -673,7 +723,7 @@ namespace WScheduler
             }
         }
 
-        static public async Task UploadResults(List<WorkDay> schedule, CalendarService service, string calendarId)
+        static public async System.Threading.Tasks.Task UploadResults(List<WorkDay> schedule, CalendarService service, string calendarId)
         {
             foreach (WorkDay day in schedule)
             {
@@ -744,10 +794,34 @@ namespace WScheduler
             }
         }
 
-        static public void AutomateRun(string username, string password) // todo: update to proper credential storage.
+        static public void AutomateRun()
         {
-            string creds = "Automate\n" + username + "\n" + password;
-            File.WriteAllText("login.txt", creds);
+            using (TaskService ts = new TaskService())
+            {
+                TaskDefinition td = ts.NewTask();
+                td.RegistrationInfo.Description= "Runs daily to update your schedule with possible changes.";
+                td.Triggers.Add(new DailyTrigger { DaysInterval = 1 });
+                td.Actions.Add(new ExecAction(Path.GetFullPath(Assembly.GetExecutingAssembly().Location)));
+                td.Settings.Hidden = true;
+                td.Settings.StartWhenAvailable = true;
+                td.Settings.RunOnlyIfNetworkAvailable = true;
+                ts.RootFolder.RegisterTaskDefinition(@"WSchedulerTask", td);
+            }
+        }
+
+        static public void RemoveAutomationTask()
+        {
+            using (TaskService ts = new TaskService())
+            {
+                try
+                {
+                    ts.RootFolder.DeleteTask("WSchedulerTask");
+                }
+                catch (Exception)
+                {
+                    // Do nothing, the task just doesn't exist, so we don't need to delete it.
+                }
+            }
         }
 
     }
