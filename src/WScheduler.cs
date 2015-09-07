@@ -47,6 +47,7 @@ namespace WScheduler
         public string Comments;
 
         public enum DayEnum { Sunday, Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, INVALID }
+
         public static DayEnum Get(string value)
         {
             if (value.Contains("Sun"))
@@ -80,7 +81,17 @@ namespace WScheduler
 
             return DayEnum.INVALID;
         }
-
+        public static string ConvertLocation(string loc)  //todo: add more stores.
+        {
+            if (loc.Contains("ST030"))
+            {
+                return "6789 E Genesee St, Fayetteville, NY 13066";
+            }
+            else
+            {
+                return loc;  // Address of the store isn't known, so just leave it as the store number.
+            }
+        }
     }
 
     class Program
@@ -492,10 +503,23 @@ namespace WScheduler
             try { wait.Until((d) => { return (d.FindElement(By.XPath("/html/body/a"))); }); } // Waits until javascript generates the SSO link.
             catch (Exception)
             {
-                Console.WriteLine("LaborPro SSO Link was not generated properly.");
-                Console.WriteLine("You encountered the classic \"SadPage\" error. We need to try logging in again...");
-                driver.Quit();
-                return 6;
+                if (driver.Title.ToString().Contains("Sign In")) // We were redirected to the sign-in page once again, so let's fill it out again...
+                {
+                    IWebElement usernameentry = driver.FindElement(By.XPath("//*[@id='userNameInput']"));
+                    IWebElement passwordentry = driver.FindElement(By.XPath("//*[@id='passwordInput']"));
+                    usernameentry.Clear();
+                    passwordentry.Clear();
+                    usernameentry.SendKeys(username);
+                    passwordentry.SendKeys(password);
+                    passwordentry.Submit();
+                }
+                else
+                {
+                    Console.WriteLine("LaborPro SSO Link was not generated properly.");
+                    Console.WriteLine("You encountered the classic \"SadPage\" error. We need to try logging in again...");
+                    driver.Quit();
+                    return 6;
+                }
             }
             
             IWebElement accessschedule = driver.FindElement(By.XPath("/html/body/a"));
@@ -678,7 +702,8 @@ namespace WScheduler
                     workDay.Hours = float.Parse(scheduleHoursRow.Cells[dayIndex].Value.Replace(":", "."));
                     workDay.Activity = activityRow.Cells[dayIndex].Value;
                     workDay.Comments = commentsRow.Cells[dayIndex].Value;
-                    workDay.Location = locationRow.Cells[dayIndex].Value;
+                    workDay.Location = WorkDay.ConvertLocation(locationRow.Cells[dayIndex].Value);
+                    
 
                     String timeSpanPart = scheduleTimesRow.Cells[dayIndex].Value;
                     String[] times = timeSpanPart.Split('-'); // split '2:00 AM-8:00 PM' on the '-'
