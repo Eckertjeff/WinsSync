@@ -1,8 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Security.Cryptography;
 
 namespace WinsSyncConsole
@@ -13,6 +9,7 @@ namespace WinsSyncConsole
         {
             WinsSync winssync = new WinsSync();
 
+            //Setup our credentials.
             winssync.SetupGoogleCreds();
             try
             {
@@ -53,6 +50,9 @@ namespace WinsSyncConsole
             winssync.FindTable();
             winssync.ParseTable();
             winssync.ParseRows();
+
+            // Let's let the user look at their schedule while we're busy uploading.
+            winssync.DisplayResults();
 
             // Now we need to upload our schedule to Google.
             // Sometimes the upload request isn't processed correctly, just retrying fixes it almost every time.

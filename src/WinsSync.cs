@@ -6,10 +6,8 @@ using System.Linq;
 using System.Text;
 using System.IO;
 using System.Threading;
-using System.Security;
 using System.Security.Cryptography;
 using System.Reflection;
-using System.Net.Http;
 using Microsoft.Win32.TaskScheduler;
 
 using Google.Apis.Auth.OAuth2;
@@ -370,6 +368,45 @@ public class WinsSync
         }
     }
 
+    public List<WorkDay> Schedule
+    {
+        get
+        {
+            return schedule;
+        }
+
+        set
+        {
+            schedule = value;
+        }
+    }
+
+    public List<Row> Rows
+    {
+        get
+        {
+            return rows;
+        }
+
+        set
+        {
+            rows = value;
+        }
+    }
+
+    public List<string> CorrectTable
+    {
+        get
+        {
+            return correctTable;
+        }
+
+        set
+        {
+            correctTable = value;
+        }
+    }
+
     public WinsSync()
     {
         Username = string.Empty;
@@ -377,9 +414,9 @@ public class WinsSync
         Automate = string.Empty;
         Savedlogin = false;
         Schedules = new List<string>();
-        correctTable = new List<string>();
-        rows = new List<Row>();
-        schedule = new List<WorkDay>();
+        CorrectTable = new List<string>();
+        Rows = new List<Row>();
+        Schedule = new List<WorkDay>();
     }
 
     public void SetupGoogleCreds()
@@ -760,7 +797,7 @@ public class WinsSync
                 throw new Exception("The 'right' table does not exist.");
             }
 
-            correctTable.Add(correcttable);
+            CorrectTable.Add(correcttable);
         }
     }
 
@@ -772,7 +809,7 @@ public class WinsSync
         const string cellEnd = "</td>";
 
         int index1 = 0; //todo: trace index going out of bounds.
-        foreach (var table in correctTable)
+        foreach (var table in CorrectTable)
         {
             while ((index1 = table.IndexOf(rowStart, index1 + 1, StringComparison.OrdinalIgnoreCase)) != -1)
             {
@@ -812,7 +849,7 @@ public class WinsSync
                     row.cells.Add(new Cell { value = actualValue });
                 }
 
-                rows.Add(row);
+                Rows.Add(row);
             }
         }
     }
@@ -821,12 +858,12 @@ public class WinsSync
     {
         for (int i = 0; i < 3; i++)
         {
-            Row dateRow = rows[1 + (i * 8)]; // First row is empty, then adds a week each iteration.
-            Row scheduleHoursRow = rows[2 + (i * 8)];
-            Row activityRow = rows[3 + (i * 8)];
-            Row locationRow = rows[4 + (i * 8)];
-            Row scheduleTimesRow = rows[5 + (i * 8)];
-            Row commentsRow = rows[6 + (i * 8)];
+            Row dateRow = Rows[1 + (i * 8)]; // First row is empty, then adds a week each iteration.
+            Row scheduleHoursRow = Rows[2 + (i * 8)];
+            Row activityRow = Rows[3 + (i * 8)];
+            Row locationRow = Rows[4 + (i * 8)];
+            Row scheduleTimesRow = Rows[5 + (i * 8)];
+            Row commentsRow = Rows[6 + (i * 8)];
 
             int dayIndex = 1; // 0 is column names
             while (true)
@@ -863,16 +900,39 @@ public class WinsSync
                     workDay.StartDateTime = DateTime.Parse(workDay.Date.ToShortDateString() + " " + workDay.StartTime);
                     workDay.EndDateTime = DateTime.Parse(workDay.Date.ToShortDateString() + " " + workDay.EndTime);
                 }
-                schedule.Add(workDay);
+                Schedule.Add(workDay);
                 dayIndex++;
             }
+        }
+    }
+    public void DisplayResults()
+    {
+        foreach (WorkDay day in Schedule)
+        {
+            if (day.Hours == 0)
+            {
+                //Console.WriteLine("You get " + day.Day.ToString() + " off!");
+                //Console.WriteLine(string.Empty);
+                continue;
+            }
+
+            if (day.Hours > 8)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine("******** WARNING - ANOMALY DETECTED: ********");
+            }
+
+            Console.WriteLine(day.Date.ToShortDateString() + " at " + day.Location + Environment.NewLine + " from " +
+                day.StartTime + " to " + day.EndTime + Environment.NewLine + " doing " + day.Activity
+                + " (" + day.Comments + ") total of " + day.Hours + " hours");
+            Console.WriteLine(string.Empty);
         }
     }
 
     public async System.Threading.Tasks.Task UploadResults()
     {
         var request = new BatchRequest(Service);
-        foreach (WorkDay day in schedule)
+        foreach (WorkDay day in Schedule)
         {
             // Setup request for current events.
             EventsResource.ListRequest listrequest = Service.Events.List(Calendarid);
