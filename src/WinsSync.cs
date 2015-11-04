@@ -32,6 +32,24 @@ public class Row
     public List<Cell> cells = new List<Cell>();
 }
 
+public class ScheduleGETException : Exception
+{
+    public ScheduleGETException() : base()
+    {
+
+    }
+    
+    public ScheduleGETException(string message) : base(message)
+    {
+
+    }
+
+    public ScheduleGETException(string message, Exception inner) : base(message, inner)
+    {
+
+    }
+}
+
 public class WorkDay
 {
     private DayEnum day;
@@ -557,7 +575,7 @@ public class WinsSync
         string logincreds = string.Empty;
         if (automate == "Automate")
         {
-            logincreds = username + "\n" + password + "\n" + automate;
+            logincreds = Username + "\n" + Password + "\n" + automate;
             byte[] plaintextcreds = Encoding.UTF8.GetBytes(logincreds);
             byte[] entropy = new byte[20];
             using (RNGCryptoServiceProvider rng = new RNGCryptoServiceProvider())
@@ -576,7 +594,7 @@ public class WinsSync
             Console.Write("Would you like to save your login info? Y/N: ");
             if (Console.ReadLine().Equals("y", StringComparison.OrdinalIgnoreCase))
             {
-                logincreds = username + "\n" + password;
+                logincreds = Username + "\n" + Password;
                 byte[] plaintextcreds = Encoding.UTF8.GetBytes(logincreds);
                 byte[] entropy = new byte[20];
                 using (RNGCryptoServiceProvider rng = new RNGCryptoServiceProvider())
@@ -603,7 +621,7 @@ public class WinsSync
         File.Delete(entropyPath);
     }
 
-    public int HTTP_GET()
+    public void ScheduleGET()
     {
         var driverService = PhantomJSDriverService.CreateDefaultService();
         driverService.HideCommandPromptWindow = true; // Disables verbose phantomjs output
@@ -624,9 +642,8 @@ public class WinsSync
         try { wait.Until((d) => { return (d.Title.ToString().Contains("Sign In") || d.Title.ToString().Contains("My Schedule")); }); } // Sometimes it skips the second login page.
         catch (WebDriverTimeoutException)
         {
-            Console.WriteLine("Did not recieve an appropriate response from the Sharepoint server. The connection most likely timed out.");
             driver.Quit();
-            return 1;
+            throw new ScheduleGETException("Did not recieve an appropriate response from the Sharepoint server. The connection most likely timed out.");
         }
         Console.WriteLine("Logging into Sharepoint.");
 
@@ -635,9 +652,8 @@ public class WinsSync
             try { wait.Until((d) => { return (d.FindElement(By.XPath("//*[@id='passwordInput']"))); }); }
             catch (Exception)
             {
-                Console.WriteLine("Password input box did not load correctly.");
                 driver.Quit();
-                return 2;
+                throw new ScheduleGETException("Password input box did not load correctly.");
             }
             IWebElement passwordentry = driver.FindElement(By.XPath("//*[@id='passwordInput']"));
             passwordentry.SendKeys(Password);
@@ -647,9 +663,8 @@ public class WinsSync
         try { wait.Until((d) => { return (d.Title.ToString().Contains("Sign In") || d.Title.ToString().Contains("My Schedule")); }); } // Checks to see if the password was incorrect.
         catch (WebDriverTimeoutException)
         {
-            Console.WriteLine("Did not recieve an appropriate response from the Sharepoint server. The connection most likely timed out.");
             driver.Quit();
-            return 3;
+            throw new ScheduleGETException("Did not recieve an appropriate response from the Sharepoint server. The connection most likely timed out.");
         }
         if (driver.Title.ToString() == "Sign In")
         {
@@ -678,7 +693,7 @@ public class WinsSync
                 Console.WriteLine("An unexpected error has occured with the webpage.");
                 Console.WriteLine(errorString);
                 driver.Quit();
-                return 4;
+                throw new ScheduleGETException("An unexpected error has occured with the webpage.");
             }
         }
 
@@ -696,7 +711,7 @@ public class WinsSync
                 if (retries <= 0)
                 {
                     driver.Quit();
-                    return 5;
+                    throw new ScheduleGETException("LaborPro link's inline frame was not generated properly.");
                 }
 
             }
@@ -718,10 +733,8 @@ public class WinsSync
             }
             else
             {
-                Console.WriteLine("LaborPro SSO Link was not generated properly.");
-                Console.WriteLine("You encountered the classic \"SadPage\" error. We need to try logging in again...");
                 driver.Quit();
-                return 6;
+                throw new ScheduleGETException("LaborPro SSO Link was not generated properly.");
             }
         }
 
@@ -744,8 +757,7 @@ public class WinsSync
         try { wait.Until((d) => { return (d.Title.ToString().Contains("Welcome")); }); }
         catch (WebDriverTimeoutException)
         {
-            Console.WriteLine("Did not properly switch to LabroPro Window.");
-            return 7;
+            throw new ScheduleGETException("Did not properly switch to LabroPro Window.");
         }
         Schedules.Add(driver.PageSource.ToString());
         for (int i = 0; i < 2; i++) // Clicks "Next" and gets the schedules for the next two weeks.
@@ -756,7 +768,6 @@ public class WinsSync
 
         driver.Quit();
         Console.WriteLine("Got your Schedule.");
-        return 0;
     }
 
     public void FindTable()
@@ -1029,5 +1040,13 @@ public class WinsSync
                 // Do nothing, the task just doesn't exist, so we don't need to delete it.
             }
         }
+    }
+
+    public void ClearSchedules()
+    {
+        Schedules = new List<string>();
+        CorrectTable = new List<string>();
+        Rows = new List<Row>();
+        Schedule = new List<WorkDay>();
     }
 }

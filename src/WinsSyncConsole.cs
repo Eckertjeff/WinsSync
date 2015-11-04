@@ -27,23 +27,25 @@ namespace WinsSyncConsole
             int retries = 5;
             while (retries > 0)
             {
-                var errorcode = winssync.HTTP_GET();
-                if(errorcode == 0)
+                try
                 {
+                    winssync.ScheduleGET();
                     break;
                 }
-                if(retries == 0)
+                catch (ScheduleGETException)
                 {
-                    Console.WriteLine("We tried getting your schedule five times and it didn't work.");
-                    Console.WriteLine("Something must be up with your connection to the server.");
-                    Console.WriteLine("Please check your connection and try again. Press any key to quit.");
-                    if (winssync.Automate != "Automate")
+                    if (--retries == 0)
                     {
-                        Console.ReadKey();
+                        Console.WriteLine("We tried getting your schedule five times and it didn't work.");
+                        Console.WriteLine("Something must be up with your connection to the server.");
+                        Console.WriteLine("Please check your connection and try again. Press any key to quit.");
+                        if (winssync.Automate != "Automate")
+                        {
+                            Console.ReadKey();
+                        }
+                        Environment.Exit(0);
                     }
-                    Environment.Exit(0);
                 }
-                retries--;
             }
 
             // Parse the HTML for our schedule info.
@@ -58,7 +60,7 @@ namespace WinsSyncConsole
             // Sometimes the upload request isn't processed correctly, just retrying fixes it almost every time.
             Console.WriteLine("Uploading your schedule now...");
             retries = 5;
-            while (true)
+            while (retries > 0)
             {
                 try
                 {
