@@ -272,19 +272,6 @@ public class WinsSync
         }
     }
 
-    public string Password
-    {
-        get
-        {
-            return password;
-        }
-
-        set
-        {
-            password = value;
-        }
-    }
-
     public string Automate
     {
         get
@@ -428,10 +415,15 @@ public class WinsSync
         }
     }
 
+    public void setSPassword(SecureString password)
+    {
+        securePwd = password;
+    }
+
     public WinsSync()
     {
         Username = string.Empty;
-        Password = string.Empty;
+        password = string.Empty;
         Automate = string.Empty;
         Savedlogin = false;
         securePwd = new SecureString();
@@ -490,7 +482,10 @@ public class WinsSync
                 ptcreds = Encoding.UTF8.GetString(credbytes);
                 creds = ptcreds.Split('\n');
                 Username = creds[0];
-                Password = creds[1];
+                for (int i = 0; i < creds[1].Length; i++)
+                {
+                    securePwd.AppendChar(creds[1][i]);
+                }
                 Savedlogin = true;
                 try
                 {
@@ -591,8 +586,9 @@ public class WinsSync
         string logincreds = string.Empty;
         if (automate == "Automate")
         {
-            Password = ConvertToUnsecureString(securePwd);
-            logincreds = Username + "\n" + Password + "\n" + automate;
+            password = ConvertToUnsecureString(securePwd);
+            logincreds = Username + "\n" + password + "\n" + automate;
+            ClearPassword();
             byte[] plaintextcreds = Encoding.UTF8.GetBytes(logincreds);
             byte[] entropy = new byte[20];
             using (RNGCryptoServiceProvider rng = new RNGCryptoServiceProvider())
@@ -602,7 +598,6 @@ public class WinsSync
 
             byte[] encryptedcreds = ProtectedData.Protect(plaintextcreds, entropy, DataProtectionScope.CurrentUser);
             File.WriteAllBytes(logincredPath, encryptedcreds);
-            ClearPassword();
             File.WriteAllBytes(entropyPath, entropy);
             savedlogin = true;
             Automate = automate;
@@ -612,18 +607,17 @@ public class WinsSync
             Console.Write("Would you like to save your login info? Y/N: ");
             if (Console.ReadLine().Equals("y", StringComparison.OrdinalIgnoreCase))
             {
-                Password = ConvertToUnsecureString(securePwd);
-                logincreds = Username + "\n" + Password;
+                password = ConvertToUnsecureString(securePwd);
+                logincreds = Username + "\n" + password;
+                ClearPassword();
                 byte[] plaintextcreds = Encoding.UTF8.GetBytes(logincreds);
                 byte[] entropy = new byte[20];
                 using (RNGCryptoServiceProvider rng = new RNGCryptoServiceProvider())
                 {
                     rng.GetBytes(entropy);
                 }
-
                 byte[] encryptedcreds = ProtectedData.Protect(plaintextcreds, entropy, DataProtectionScope.CurrentUser);
                 File.WriteAllBytes(logincredPath, encryptedcreds);
-                ClearPassword();
                 File.WriteAllBytes(entropyPath, entropy);
                 savedlogin = true;
                 Automate = automate;
@@ -676,8 +670,8 @@ public class WinsSync
                 throw new ScheduleGETException("Password input box did not load correctly.");
             }
             IWebElement passwordentry = driver.FindElement(By.XPath("//*[@id='passwordInput']"));
-            Password = ConvertToUnsecureString(securePwd);
-            passwordentry.SendKeys(Password);
+            password = ConvertToUnsecureString(securePwd);
+            passwordentry.SendKeys(password);
             ClearPassword();
             passwordentry.Submit();
         }
@@ -705,8 +699,8 @@ public class WinsSync
                     GetLoginCreds();
                     Console.WriteLine("Trying again...");
                     usernameentry.SendKeys(Username);
-                    Password = ConvertToUnsecureString(securePwd);
-                    passwordentry.SendKeys(Password);
+                    password = ConvertToUnsecureString(securePwd);
+                    passwordentry.SendKeys(password);
                     ClearPassword();
                     passwordentry.Submit();
                 }
@@ -752,7 +746,9 @@ public class WinsSync
                 usernameentry.Clear();
                 passwordentry.Clear();
                 usernameentry.SendKeys(Username);
-                passwordentry.SendKeys(Password);
+                password = ConvertToUnsecureString(securePwd);
+                passwordentry.SendKeys(password);
+                ClearPassword();
                 passwordentry.Submit();
             }
             else
@@ -1076,6 +1072,6 @@ public class WinsSync
 
     public void ClearPassword()
     {
-        Password = "";
+        password = "";
     }
 }
