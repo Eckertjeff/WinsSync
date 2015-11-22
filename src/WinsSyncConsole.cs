@@ -32,8 +32,9 @@ namespace WinsSyncConsole
                     winssync.ScheduleGET();
                     break;
                 }
-                catch (ScheduleGETException)
+                catch (ScheduleGETException ex)
                 {
+                    Console.WriteLine(ex.ToString());
                     if (--retries == 0)
                     {
                         Console.WriteLine("We tried getting your schedule five times and it didn't work.");

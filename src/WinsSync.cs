@@ -22,6 +22,7 @@ using OpenQA.Selenium.Support.UI;
 using OpenQA.Selenium.PhantomJS;
 using System.Security;
 using System.Runtime.InteropServices;
+using Microsoft.Win32;
 //using OpenQA.Selenium.Firefox;
 
 public class Cell
@@ -461,14 +462,14 @@ public class WinsSync
     {
         string credPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.Personal);
         string logincredPath = Path.Combine(credPath, ".credentials/login.txt");
-        string entropyPath = Path.Combine(credPath, ".credentials/entropy.txt");
         byte[] logincreds = null, entropy = null;
         string ptcreds = string.Empty;
         string[] creds;
         try
         {
             logincreds = File.ReadAllBytes(logincredPath);
-            entropy = File.ReadAllBytes(entropyPath);
+            RegistryKey key = Registry.CurrentUser.OpenSubKey(@"Software\WinsSync\Key");
+            entropy = (byte[])key.GetValue("EntropyKey");
         }
         catch (Exception)
         {
@@ -598,7 +599,9 @@ public class WinsSync
 
             byte[] encryptedcreds = ProtectedData.Protect(plaintextcreds, entropy, DataProtectionScope.CurrentUser);
             File.WriteAllBytes(logincredPath, encryptedcreds);
-            File.WriteAllBytes(entropyPath, entropy);
+            RegistryKey key = Registry.CurrentUser.CreateSubKey(@"Software\WinsSync\Key");
+            key.SetValue("EntropyKey", entropy, RegistryValueKind.Binary);
+            key.Close();
             savedlogin = true;
             Automate = automate;
         }
@@ -618,7 +621,8 @@ public class WinsSync
                 }
                 byte[] encryptedcreds = ProtectedData.Protect(plaintextcreds, entropy, DataProtectionScope.CurrentUser);
                 File.WriteAllBytes(logincredPath, encryptedcreds);
-                File.WriteAllBytes(entropyPath, entropy);
+                RegistryKey key = Registry.CurrentUser.CreateSubKey(@"Software\WinsSync\Key");
+                key.SetValue("EntropyKey", entropy, RegistryValueKind.Binary);
                 savedlogin = true;
                 Automate = automate;
             }
@@ -983,17 +987,20 @@ public class WinsSync
             {
                 foreach (Event eventItem in eventslist.Items)
                 {
-                    DateTime eventcontainer = (DateTime)eventItem.Start.DateTime; // Typecast to use ToShortDateString() method for comparison.
-                    if (((eventcontainer.ToShortDateString()) == (day.Date.ToShortDateString())) && (eventItem.Summary.Contains(workevent)))
+                    if(eventItem.Start.DateTime != null)
                     {
-                        request.Queue<Event>(Service.Events.Delete(Calendarid, eventItem.Id),
-                            (content, error, i, message) =>
-                            {
-                                if (error != null)
+                        DateTime eventcontainer = (DateTime)eventItem.Start.DateTime; // Typecast to use ToShortDateString() method for comparison.
+                        if (((eventcontainer.ToShortDateString()) == (day.Date.ToShortDateString())) && (eventItem.Summary.Contains(workevent)))
+                        {
+                            request.Queue<Event>(Service.Events.Delete(Calendarid, eventItem.Id),
+                                (content, error, i, message) =>
                                 {
-                                    throw new Exception(error.ToString());
-                                }
-                            });
+                                    if (error != null)
+                                    {
+                                        throw new Exception(error.ToString());
+                                    }
+                                });
+                        }
                     }
                 }
             }
