@@ -648,7 +648,7 @@ public class WinsSync
 
         Console.WriteLine("Logging into Office 365.");
         driver.Navigate().GoToUrl("https://wegmans.sharepoint.com/resources/Pages/LaborPro.aspx");
-        if (driver.Title.ToString() == "Sign in to Office 365")
+        if (driver.Title.ToString() == "Sign in to your account")
         {
             IWebElement loginentry = driver.FindElement(By.XPath("//*[@id='cred_userid_inputtext']"));
             loginentry.SendKeys(Username);
